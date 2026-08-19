@@ -1,45 +1,22 @@
-# ── Core ──────────────────────────────────────────────
-requests==2.31.0
-python-dotenv==1.0.0
-pydantic==2.5.0
-
-# ── Database ───────────────────────────────────────────
-psycopg2-binary==2.9.9
-sqlalchemy==2.0.23
-alembic==1.13.0
-redis==5.0.1
-
-# ── Scheduling ─────────────────────────────────────────
-apscheduler==3.10.4
-
-# ── Scraping ───────────────────────────────────────────
-beautifulsoup4==4.12.2
-lxml==4.9.3
-playwright==1.40.0
-fake-useragent==1.4.0
-
-# ── Data Processing ────────────────────────────────────
-pandas==2.1.4
-numpy==1.26.2
-
-# ── Reddit ─────────────────────────────────────────────
-praw==7.7.1
-
-# ── RSS / News ─────────────────────────────────────────
-feedparser==6.0.10
-
-# ── AI Analysis ────────────────────────────────────────
-anthropic==0.18.1
-openai==1.6.1
-
-# ── Vector Database ────────────────────────────────────
-pinecone-client==3.0.0
-
-# ── Dashboard ──────────────────────────────────────────
-streamlit==1.29.0
-plotly==5.18.0
-
-# ── Logging & Utilities ────────────────────────────────
-loguru==0.7.2
-tenacity==8.2.3
-httpx==0.26.0
+requests
+python-dotenv
+pydantic
+psycopg2-binary
+sqlalchemy
+alembic
+redis
+apscheduler
+beautifulsoup4
+lxml
+playwright
+fake-useragent
+pandas
+numpy
+praw
+feedparser
+anthropic
+streamlit
+plotly
+loguru
+tenacity
+httpx
