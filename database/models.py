@@ -432,6 +432,52 @@ class BetSignal(Base):
 
 
 # ══════════════════════════════════════════════════════════════════════
+#  PLAYER PROP EDGES
+# ══════════════════════════════════════════════════════════════════════
+
+class PropEdgeDB(Base):
+    __tablename__ = "prop_edges"
+
+    id                = Column(Integer, primary_key=True)
+    sport             = Column(String(10), nullable=False)
+    game_id           = Column(String(50))
+    player_name       = Column(String(100), nullable=False)
+    team              = Column(String(100))
+    opponent          = Column(String(100))
+    prop_type         = Column(String(50))   # player_points / pitcher_strikeouts etc
+    prop_label        = Column(String(50))   # Points / Strikeouts etc
+    # Best lines across books
+    best_over_line    = Column(Float)
+    best_over_odds    = Column(Integer)
+    best_over_book    = Column(String(50))
+    best_under_line   = Column(Float)
+    best_under_odds   = Column(Integer)
+    best_under_book   = Column(String(50))
+    line_spread       = Column(Float)        # Difference between highest/lowest line
+    num_books         = Column(Integer)
+    # All lines as JSON
+    all_lines         = Column(JSON)
+    # Player history
+    player_avg        = Column(Float)
+    recent_avg        = Column(Float)
+    vs_opponent_avg   = Column(Float)
+    # Edge
+    edge_direction    = Column(String(10))   # over / under / none
+    edge_strength     = Column(Float)        # 0-10
+    edge_reason       = Column(Text)
+    web_context       = Column(Text)
+    # Metadata
+    is_best_bet       = Column(Boolean, default=False)
+    result            = Column(String(20), default="pending")
+    generated_at      = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("idx_props_sport_date", "sport", "generated_at"),
+        Index("idx_props_player", "player_name"),
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════
 #  DATABASE CONNECTION HELPERS
 # ══════════════════════════════════════════════════════════════════════
 
