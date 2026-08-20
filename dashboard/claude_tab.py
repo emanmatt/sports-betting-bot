@@ -57,10 +57,12 @@ def get_live_context(sport: str) -> str:
 
             lines.append(f"\n{away_name} @ {home_name} — {time_str}")
             if odds:
-                lines.append(f"  Spread: {odds.spread:+.1f} (home) | Total: {odds.total_over_under}")
-                if odds.home_moneyline:
+                spread_str = f"{odds.spread:+.1f}" if odds.spread is not None else "N/A"
+                total_str = str(odds.total_over_under) if odds.total_over_under is not None else "N/A"
+                lines.append(f"  Spread: {spread_str} (home) | Total: {total_str}")
+                if odds.home_moneyline is not None and odds.away_moneyline is not None:
                     lines.append(f"  ML: Home {odds.home_moneyline:+d} | Away {odds.away_moneyline:+d}")
-            if odds and opening and odds.spread and opening.spread:
+            if odds and opening and odds.spread is not None and opening.spread is not None:
                 move = round(odds.spread - opening.spread, 1)
                 if abs(move) >= 0.5:
                     lines.append(f"  ⚡ LINE MOVED: {move:+.1f} from opening")
@@ -83,7 +85,7 @@ def get_live_context(sport: str) -> str:
                     f"{p.best_over_line} | Strength: {p.edge_strength:.1f}/10 | "
                     f"Best book: {p.best_over_book if p.edge_direction == 'over' else p.best_under_book}"
                 )
-                if p.player_avg:
+                if p.player_avg is not None:
                     lines.append(f"    Player avg: {p.player_avg} vs line {p.best_over_line}")
                 if p.edge_reason:
                     lines.append(f"    Reason: {p.edge_reason[:100]}")
@@ -148,12 +150,11 @@ Apply the full analysis framework:
 Keep it concise and actionable."""
 
     try:
+        from analysis.system_prompt import MASTER_SYSTEM_PROMPT
         response = client.messages.create(
             model=MODEL,
             max_tokens=2000,
-            system="""You are a professional sports betting analyst integrated into a live research dashboard.
-You have access to real-time odds, line movement, prop edges, and news.
-Apply rigorous data tier classification. Never manufacture edges. Say NO BET when appropriate.""",
+            system=MASTER_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}]
         )
         return response.content[0].text
@@ -179,13 +180,11 @@ def chat_with_claude(question: str, sport: str, history: list) -> str:
     })
 
     try:
+        from analysis.system_prompt import MASTER_SYSTEM_PROMPT
         response = client.messages.create(
             model=MODEL,
             max_tokens=1000,
-            system="""You are a sports betting research assistant integrated into a live dashboard.
-You have access to today's real-time odds, line movement, player props, and news.
-Answer questions using the live data provided. Be honest about data limitations.
-Apply data tier classification. Never manufacture confidence.""",
+            system=MASTER_SYSTEM_PROMPT + "\n\nYou are in a live chat inside the dashboard. Answer the user's question using the live data provided. Keep responses conversational but rigorous — apply the full framework above.",
             messages=messages
         )
         return response.content[0].text
