@@ -220,13 +220,14 @@ with st.sidebar:
 
 # ── Main tabs ─────────────────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📅 Today's Games",
     "⭐ Best Props",
     "⚡ All Props",
     "🎯 AI Signals",
     "📰 News",
     "📈 Line Movement",
+    "🤖 Claude",
 ])
 
 
@@ -517,3 +518,15 @@ with tab6:
             st.markdown("**Sharp Money (1.5+ pts):** Professional bettors — most reliable signal")
         with c2:
             st.markdown("**Public Money (small moves):** Casual bettors — fades by game time")
+
+
+# ════════════════════════════════════════════════════════
+# TAB 7: CLAUDE — Chat + Auto-Analysis
+# ════════════════════════════════════════════════════════
+with tab7:
+    try:
+        from dashboard.claude_tab import render_claude_tab
+        render_claude_tab(selected_sport)
+    except Exception as e:
+        st.error(f"Claude tab error: {e}")
+        st.info("Make sure your ANTHROPIC_API_KEY is set in Streamlit secrets.")
