@@ -32,7 +32,23 @@ LOG_LEVEL   = os.getenv("LOG_LEVEL", "INFO")
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
 # ── Sports & League Config ─────────────────────────────────────────────────
-SUPPORTED_SPORTS = ["NBA", "NFL", "MLB", "NHL"]
+# ═══════════════════════════════════════════════════════════════════
+#  ⚙️  SPORTS TOGGLE — EDIT THIS ONE LINE WHEN SEASONS START
+# ═══════════════════════════════════════════════════════════════════
+#  Right now: MLB only (NBA/NFL/NHL are offseason).
+#
+#  When NFL starts (Sept 9, 2026):   SUPPORTED_SPORTS = ["MLB", "NFL"]
+#  When NBA/NHL start (Oct 20, 2026): SUPPORTED_SPORTS = ["MLB", "NFL", "NBA", "NHL"]
+#
+#  Just change the line below, save, then push to GitHub:
+#    git add config/settings.py
+#    git commit -m "Enable [sport]"
+#    git push
+# ═══════════════════════════════════════════════════════════════════
+SUPPORTED_SPORTS = ["MLB"]
+
+# All sports the bot CAN handle (don't edit — used for config lookups)
+ALL_SPORTS = ["NBA", "NFL", "MLB", "NHL"]
 
 # OddsAPI sport keys (used in API calls)
 ODDS_API_SPORT_KEYS = {

@@ -241,11 +241,11 @@ def main():
     scheduler = BlockingScheduler(timezone="America/New_York")
 
     scheduler.add_job(
-        job_update_schedule, IntervalTrigger(minutes=30),
+        job_update_schedule, IntervalTrigger(hours=3),
         id="schedule", name="Game Schedule", max_instances=1
     )
     scheduler.add_job(
-        job_update_odds, IntervalTrigger(minutes=30),
+        job_update_odds, IntervalTrigger(hours=2),
         id="odds", name="Live Odds", max_instances=1
     )
     scheduler.add_job(
@@ -253,15 +253,15 @@ def main():
         id="news", name="News Feed", max_instances=1
     )
     scheduler.add_job(
-        job_update_injuries, IntervalTrigger(hours=1),
+        job_update_injuries, IntervalTrigger(hours=2),
         id="injuries", name="Injury Reports", max_instances=1
     )
     scheduler.add_job(
-        job_update_props, IntervalTrigger(hours=2),
+        job_update_props, IntervalTrigger(hours=6),
         id="props", name="Player Props", max_instances=1
     )
     scheduler.add_job(
-        job_ai_news_analysis, IntervalTrigger(hours=3),
+        job_ai_news_analysis, IntervalTrigger(hours=4),
         id="ai_analysis", name="AI News Analysis", max_instances=1
     )
     scheduler.add_job(
