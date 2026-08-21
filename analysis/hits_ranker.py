@@ -63,25 +63,43 @@ class HitsRanker:
         self.db.close()
 
     def _get_batter_hit_history(self, player_name: str) -> dict:
-        """Pull a batter's hit history from game logs."""
-        # Match player by last name
-        last_name = player_name.split()[-1] if player_name else ""
-        player = (self.db.query(Player)
-                 .filter(Player.sport == "MLB",
-                         Player.full_name.ilike(f"%{last_name}%"))
-                 .first())
-        if not player:
+        """Pull a batter's hit history from game logs by exact name match."""
+        if not player_name:
             return {}
 
+        # Primary path: match on the name stored in raw_stats JSON.
+        # Bypasses the players-table ID mismatch entirely.
+        from sqlalchemy import cast, String
         stats = (self.db.query(PlayerStats)
-                .filter_by(player_id=player.player_id, sport="MLB")
+                .filter(PlayerStats.sport == "MLB",
+                        cast(PlayerStats.raw_stats, String).ilike(
+                            f'%"player_name": "{player_name}"%'))
                 .order_by(PlayerStats.game_id.desc())
                 .limit(20)
                 .all())
 
+        # Fallback: match via players table by exact full name
+        if not stats:
+            player = (self.db.query(Player)
+                     .filter(Player.sport == "MLB",
+                             Player.full_name.ilike(player_name))
+                     .first())
+            if player:
+                stats = (self.db.query(PlayerStats)
+                        .filter_by(player_id=player.player_id, sport="MLB")
+                        .order_by(PlayerStats.game_id.desc())
+                        .limit(20)
+                        .all())
+
+        if not stats:
+            return {}
+
         # Extract hit values (from column or raw_stats)
         hit_values = []
         for s in stats:
+            # Skip pitcher rows
+            if s.raw_stats and s.raw_stats.get("is_pitcher"):
+                continue
             h = s.hits
             if h is None and s.raw_stats:
                 h = s.raw_stats.get("hits")

@@ -128,15 +128,16 @@ class MLBGameLogBackfill:
         """Fetch and save a player's game log. Returns games saved."""
         player_id = player_info["id"]
         is_pitcher = player_info["is_pitcher"]
+        player_name = player_info["name"]
 
-        # Ensure player exists in our DB
+        # Ensure player exists in our DB (use raw numeric ID, no prefix)
         db_player = self.db.query(Player).filter_by(
             player_id=str(player_id)
         ).first()
         if not db_player:
             db_player = Player(
                 player_id=str(player_id),
-                full_name=player_info["name"],
+                full_name=player_name,
                 sport="MLB",
                 position=player_info["position"],
                 team_id=str(player_info["team_id"]),
@@ -153,6 +154,10 @@ class MLBGameLogBackfill:
 
         for g in games[-20:]:  # Last 20 games
             game_key = f"MLBLOG_{player_id}_{g['game_pk']}"
+
+            # Store player name + pitcher flag inside raw_stats for direct matching
+            g["player_name"] = player_name
+            g["is_pitcher"] = is_pitcher
 
             # Check if already saved
             existing = self.db.query(PlayerStats).filter_by(
@@ -181,7 +186,7 @@ class MLBGameLogBackfill:
                 saved += 1
             except Exception as e:
                 self.db.rollback()
-                logger.debug(f"[GameLog] Skip {player_info['name']} game: {e}")
+                logger.debug(f"[GameLog] Skip {player_name} game: {e}")
                 continue
 
         return saved
