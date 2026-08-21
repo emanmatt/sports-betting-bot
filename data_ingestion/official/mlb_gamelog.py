@@ -152,7 +152,7 @@ class MLBGameLogBackfill:
         saved = 0
 
         for g in games[-20:]:  # Last 20 games
-            game_key = f"MLB_{g['game_pk']}"
+            game_key = f"MLBLOG_{player_id}_{g['game_pk']}"
 
             # Check if already saved
             existing = self.db.query(PlayerStats).filter_by(
@@ -161,31 +161,29 @@ class MLBGameLogBackfill:
             if existing:
                 continue
 
-            stat = PlayerStats(
-                player_id=str(player_id),
-                game_id=game_key,
-                sport="MLB",
-                season_year=SEASON,
-                raw_stats=g,
-            )
-            if is_pitcher:
-                stat.strikeouts = g.get("strikeouts", 0)
-            else:
-                stat.hits = g.get("hits", 0)
-                stat.home_runs = g.get("home_runs", 0)
-                stat.rbi = g.get("rbi", 0)
-                # Store total_bases in raw_stats (no dedicated column)
-
-            self.db.add(stat)
-            saved += 1
-
-        if saved:
             try:
+                stat = PlayerStats(
+                    player_id=str(player_id),
+                    game_id=game_key,
+                    sport="MLB",
+                    season_year=SEASON,
+                    raw_stats=g,
+                )
+                if is_pitcher:
+                    stat.strikeouts = int(g.get("strikeouts", 0) or 0)
+                else:
+                    stat.hits = int(g.get("hits", 0) or 0)
+                    stat.home_runs = int(g.get("home_runs", 0) or 0)
+                    stat.rbi = int(g.get("rbi", 0) or 0)
+
+                self.db.add(stat)
                 self.db.commit()
+                saved += 1
             except Exception as e:
                 self.db.rollback()
-                logger.debug(f"[GameLog] Save failed for {player_info['name']}: {e}")
-                return 0
+                logger.debug(f"[GameLog] Skip {player_info['name']} game: {e}")
+                continue
+
         return saved
 
     def run_backfill(self, limit: int = None):

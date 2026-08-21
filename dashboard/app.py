@@ -220,8 +220,9 @@ with st.sidebar:
 
 # ── Main tabs ─────────────────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
     "📅 Today's Games",
+    "🔥 Top Hits",
     "⭐ Best Props",
     "🛒 Line Shop",
     "💰 Edges",
@@ -272,9 +273,20 @@ with tab1:
 
 
 # ════════════════════════════════════════════════════════
-# TAB 2: BEST PROPS (auto-populated from DB)
+# TAB 2: TOP HITS (ranked batter hit plays)
 # ════════════════════════════════════════════════════════
 with tab2:
+    try:
+        from dashboard.tophits_tab import render_tophits_tab
+        render_tophits_tab(selected_sport)
+    except Exception as e:
+        st.error(f"Top Hits error: {e}")
+
+
+# ════════════════════════════════════════════════════════
+# TAB 3: BEST PROPS (auto-populated from DB)
+# ════════════════════════════════════════════════════════
+with tab3:
     st.subheader("⭐ Best Player Prop Edges Today")
     st.caption("Automatically updated every 2 hours by the scheduler. No manual action needed.")
 
@@ -355,9 +367,9 @@ with tab2:
 
 
 # ════════════════════════════════════════════════════════
-# TAB 3: LINE SHOP (multi-book + DFS)
+# TAB 4: LINE SHOP (multi-book + DFS)
 # ════════════════════════════════════════════════════════
-with tab3:
+with tab4:
     try:
         from dashboard.lineshop_tab import render_lineshop_tab
         render_lineshop_tab(selected_sport)
@@ -366,9 +378,9 @@ with tab3:
 
 
 # ════════════════════════════════════════════════════════
-# TAB 4: EDGES (arbitrage, middles, +EV)
+# TAB 5: EDGES (arbitrage, middles, +EV)
 # ════════════════════════════════════════════════════════
-with tab4:
+with tab5:
     try:
         from dashboard.edges_tab import render_edges_tab
         render_edges_tab(selected_sport)
@@ -377,9 +389,9 @@ with tab4:
 
 
 # ════════════════════════════════════════════════════════
-# TAB 5: ALL PROPS with filters
+# TAB 6: ALL PROPS with filters
 # ════════════════════════════════════════════════════════
-with tab5:
+with tab6:
     st.subheader(f"⚡ {selected_sport} Player Props")
 
     f1, f2, f3 = st.columns(3)
@@ -427,9 +439,9 @@ with tab5:
 
 
 # ════════════════════════════════════════════════════════
-# TAB 6: AI SIGNALS
+# TAB 7: AI SIGNALS
 # ════════════════════════════════════════════════════════
-with tab6:
+with tab7:
     st.subheader("🎯 AI Bet Signals")
 
     # Show cached AI news analysis
@@ -470,9 +482,9 @@ with tab6:
 
 
 # ════════════════════════════════════════════════════════
-# TAB 7: NEWS FEED
+# TAB 8: NEWS FEED
 # ════════════════════════════════════════════════════════
-with tab7:
+with tab8:
     st.subheader("📰 News Feed")
 
     c1, c2 = st.columns(2)
@@ -507,9 +519,9 @@ with tab7:
 
 
 # ════════════════════════════════════════════════════════
-# TAB 8: LINE MOVEMENT
+# TAB 9: LINE MOVEMENT
 # ════════════════════════════════════════════════════════
-with tab8:
+with tab9:
     st.subheader("📈 Line Movement")
     st.caption("Sharp money = 1.5+ point moves")
 
@@ -547,7 +559,7 @@ with tab8:
 # ════════════════════════════════════════════════════════
 # TAB 7: CLAUDE — Chat + Auto-Analysis
 # ════════════════════════════════════════════════════════
-with tab9:
+with tab10:
     try:
         from dashboard.claude_tab import render_claude_tab
         render_claude_tab(selected_sport)
