@@ -204,7 +204,7 @@ with st.sidebar:
         st.metric("News",    stats["news"])
 
     st.divider()
-    selected_sport = st.selectbox("Sport", SUPPORTED_SPORTS, index=2)
+    selected_sport = st.selectbox("Sport", SUPPORTED_SPORTS, index=0)
 
     if st.button("🔄 Refresh", use_container_width=True):
         st.cache_data.clear()
