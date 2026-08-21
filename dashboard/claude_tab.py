@@ -118,6 +118,52 @@ def get_live_context(sport: str) -> str:
             for inj in injuries:
                 lines.append(f"  {inj.player_id} | {inj.status} | {inj.injury_type or 'Unknown'}")
 
+        # ── MLB OFFICIAL DATA (lineups, pitchers, weather, fatigue) ──────
+        if sport == "MLB":
+            try:
+                from data_ingestion.official.mlb_client import MLBClient
+                from data_ingestion.official.weather_engine import WeatherEngine
+                mlb = MLBClient()
+                weather = WeatherEngine()
+
+                mlb_games = mlb.get_todays_games()
+                if mlb_games:
+                    lines.append(f"\n═══ MLB OFFICIAL DATA (Tier 1) ═══")
+                    for mg in mlb_games[:6]:
+                        lines.append(f"\n{mg.away_team} @ {mg.home_team} — {mg.venue}")
+                        # Probable pitchers
+                        if mg.away_pitcher:
+                            lines.append(f"  {mg.away_team} SP: {mg.away_pitcher}")
+                        if mg.home_pitcher:
+                            lines.append(f"  {mg.home_team} SP: {mg.home_pitcher}")
+                        # Lineup status
+                        lineup = mlb.get_lineup(mg.game_pk)
+                        if lineup["confirmed"]:
+                            lines.append(f"  ✅ Lineups CONFIRMED")
+                        else:
+                            lines.append(f"  ⏳ Lineups not yet posted")
+                        # Weather / wind
+                        if mg.venue:
+                            wr = weather.get_stadium_weather(mg.venue)
+                            if wr.impact_summary:
+                                lines.append(f"  🌤️ {wr.impact_summary}")
+                                if wr.total_lean and wr.total_lean != "neutral":
+                                    lines.append(f"     → Weather favors {wr.total_lean.upper()}")
+            except Exception as e:
+                lines.append(f"\n[MLB official data unavailable: {e}]")
+
+        # ── REDDIT CHATTER (Tier 3 — soft signals) ──────────────────────
+        try:
+            from data_ingestion.soft.reddit_client import RedditClient
+            reddit = RedditClient()
+            chatter = reddit.get_betting_chatter()
+            if chatter:
+                lines.append(f"\n═══ REDDIT CHATTER (Tier 3 — low weight) ═══")
+                for post in chatter[:5]:
+                    lines.append(f"  [{post['score']}pts] {post['title'][:100]}")
+        except Exception:
+            pass
+
         return "\n".join(lines)
 
     except Exception as e:
