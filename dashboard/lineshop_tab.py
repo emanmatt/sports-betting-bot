@@ -166,6 +166,30 @@ def render_lineshop_tab(selected_sport: str):
 
             with c2:
                 st.markdown("**📈 Hit Rate & Projection**")
+                # Projection from model
+                try:
+                    from analysis.projections import ProjectionModel
+                    pm = ProjectionModel()
+                    pdata = pm.project_prop(
+                        prop.player_name, prop.sport,
+                        prop.prop_type, prop.consensus_line or 0,
+                        opponent=prop.away_team
+                    )
+                    pm.close()
+                    if pdata["has_data"]:
+                        lean_emoji = {"over": "📈", "under": "📉",
+                                     "pass": "➖"}.get(pdata["lean"], "")
+                        proj_delta = None
+                        if prop.consensus_line and pdata["projection"]:
+                            proj_delta = f"{pdata['edge']:+.1f} vs line"
+                        st.metric("Projection", pdata["projection"], delta=proj_delta)
+                        if pdata["lean"] and pdata["lean"] != "pass":
+                            st.markdown(f"**Model lean:** {lean_emoji} "
+                                       f"{pdata['lean'].upper()} "
+                                       f"({pdata['confidence']} confidence)")
+                except Exception:
+                    pass
+
                 if hit_calc and prop.consensus_line:
                     try:
                         hr = hit_calc.enrich_prop(

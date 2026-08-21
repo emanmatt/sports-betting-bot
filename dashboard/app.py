@@ -220,10 +220,11 @@ with st.sidebar:
 
 # ── Main tabs ─────────────────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "📅 Today's Games",
     "⭐ Best Props",
     "🛒 Line Shop",
+    "💰 Edges",
     "⚡ All Props",
     "🎯 AI Signals",
     "📰 News",
@@ -365,9 +366,20 @@ with tab3:
 
 
 # ════════════════════════════════════════════════════════
-# TAB 4: ALL PROPS with filters
+# TAB 4: EDGES (arbitrage, middles, +EV)
 # ════════════════════════════════════════════════════════
 with tab4:
+    try:
+        from dashboard.edges_tab import render_edges_tab
+        render_edges_tab(selected_sport)
+    except Exception as e:
+        st.error(f"Edges error: {e}")
+
+
+# ════════════════════════════════════════════════════════
+# TAB 5: ALL PROPS with filters
+# ════════════════════════════════════════════════════════
+with tab5:
     st.subheader(f"⚡ {selected_sport} Player Props")
 
     f1, f2, f3 = st.columns(3)
@@ -415,9 +427,9 @@ with tab4:
 
 
 # ════════════════════════════════════════════════════════
-# TAB 5: AI SIGNALS
+# TAB 6: AI SIGNALS
 # ════════════════════════════════════════════════════════
-with tab5:
+with tab6:
     st.subheader("🎯 AI Bet Signals")
 
     # Show cached AI news analysis
@@ -458,9 +470,9 @@ with tab5:
 
 
 # ════════════════════════════════════════════════════════
-# TAB 6: NEWS FEED
+# TAB 7: NEWS FEED
 # ════════════════════════════════════════════════════════
-with tab6:
+with tab7:
     st.subheader("📰 News Feed")
 
     c1, c2 = st.columns(2)
@@ -495,9 +507,9 @@ with tab6:
 
 
 # ════════════════════════════════════════════════════════
-# TAB 7: LINE MOVEMENT
+# TAB 8: LINE MOVEMENT
 # ════════════════════════════════════════════════════════
-with tab7:
+with tab8:
     st.subheader("📈 Line Movement")
     st.caption("Sharp money = 1.5+ point moves")
 
@@ -535,7 +547,7 @@ with tab7:
 # ════════════════════════════════════════════════════════
 # TAB 7: CLAUDE — Chat + Auto-Analysis
 # ════════════════════════════════════════════════════════
-with tab8:
+with tab9:
     try:
         from dashboard.claude_tab import render_claude_tab
         render_claude_tab(selected_sport)
