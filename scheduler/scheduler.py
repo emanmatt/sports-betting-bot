@@ -161,6 +161,23 @@ def job_ai_news_analysis():
         logger.error(f"[Scheduler] AI news job failed: {e}")
 
 
+def job_update_gamelogs():
+    """
+    Backfill/refresh player game logs from MLB Stats API.
+    Runs once daily — keeps hit rates and projections current.
+    """
+    logger.info("[Scheduler] 📊 Updating player game logs...")
+    try:
+        from data_ingestion.official.mlb_gamelog import MLBGameLogBackfill
+        backfill = MLBGameLogBackfill()
+        try:
+            backfill.run_backfill()
+        finally:
+            backfill.close()
+    except Exception as e:
+        logger.error(f"[Scheduler] Game log update failed: {e}")
+
+
 def job_update_contracts():
     """Update contract data. Runs once per day."""
     from data_ingestion.contracts.contract_client import ContractClient
@@ -267,6 +284,10 @@ def main():
     scheduler.add_job(
         job_update_contracts, CronTrigger(hour=6, minute=0),
         id="contracts", name="Contracts", max_instances=1
+    )
+    scheduler.add_job(
+        job_update_gamelogs, CronTrigger(hour=5, minute=0),
+        id="gamelogs", name="Player Game Logs", max_instances=1
     )
     scheduler.add_job(
         job_full_daily_refresh, CronTrigger(hour=7, minute=0),
