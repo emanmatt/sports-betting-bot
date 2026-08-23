@@ -49,6 +49,38 @@ def job_update_news():
     client.run_all_sports()
 
 
+def job_update_social():
+    """Collect Reddit and optional X posts. Missing credentials are a no-op."""
+    from data_ingestion.soft.reddit_client import RedditClient
+    from data_ingestion.soft.twitter_client import TwitterClient
+    from database.models import get_session, SocialPost
+    db = get_session()
+    try:
+        reddit, x_client = RedditClient(), TwitterClient()
+        for sport in SUPPORTED_SPORTS:
+            posts = reddit.get_betting_chatter()
+            if x_client.enabled: posts += x_client.search(f"{sport} injury OR lineup")
+            for post in posts:
+                post_id = post.get("post_id") or post.get("url")
+                if not post_id or db.query(SocialPost).filter_by(post_id=post_id).first(): continue
+                db.add(SocialPost(sport=sport, platform=post.get("platform", "reddit"), source_name=post.get("subreddit", post.get("source_name", "reddit")),
+                    post_id=post_id[:100], author=post.get("author"), content=(post.get("text") or post.get("content") or post.get("title", ""))[:10000],
+                    url=post.get("url"), upvotes=post.get("score", post.get("upvotes", 0)), comments=post.get("num_comments", post.get("comments", 0)),
+                    is_verified_source=post.get("is_verified_source", False), published_at=datetime.utcnow()))
+        db.commit()
+    except Exception as exc:
+        db.rollback(); logger.warning(f"[Scheduler] Social update failed: {exc}")
+    finally: db.close()
+
+
+def job_research_synthesis():
+    from analysis.research_orchestrator import ResearchOrchestrator
+    orchestrator = ResearchOrchestrator()
+    for sport in SUPPORTED_SPORTS:
+        summary = orchestrator.run(sport)
+        logger.info(f"[Research] {sport}: {summary['actionable_count']} actionable evidence items")
+
+
 def job_update_injuries():
     """Pull injury reports. Runs every hour."""
     from data_ingestion.official.espn_client import ESPNClient
@@ -269,6 +301,8 @@ def main():
         job_update_news, IntervalTrigger(minutes=30),
         id="news", name="News Feed", max_instances=1
     )
+    scheduler.add_job(job_update_social, IntervalTrigger(minutes=30), id="social", name="Reddit and X", max_instances=1)
+    scheduler.add_job(job_research_synthesis, IntervalTrigger(hours=1), id="research", name="Evidence Synthesis", max_instances=1)
     scheduler.add_job(
         job_update_injuries, IntervalTrigger(hours=2),
         id="injuries", name="Injury Reports", max_instances=1

@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from database.models import (
     get_session, Game, GameOdds, Team, Player,
     NewsArticle, BetSignal, InjuryReport, PropEdgeDB
+    , ResearchEvidence, PickOutcome
 )
 from config.settings import SUPPORTED_SPORTS
 
@@ -220,7 +221,7 @@ with st.sidebar:
 
 # ── Main tabs ─────────────────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
     "📅 Today's Games",
     "🔥 Top Props",
     "⭐ Best Props",
@@ -230,7 +231,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
     "🎯 AI Signals",
     "📰 News",
     "📈 Line Movement",
-    "🤖 Claude",
+    "🤖 Claude", "🔬 Research & Learning",
 ])
 
 
@@ -566,3 +567,24 @@ with tab10:
     except Exception as e:
         st.error(f"Claude tab error: {e}")
         st.info("Make sure your ANTHROPIC_API_KEY is set in Streamlit secrets.")
+
+with tab11:
+    st.subheader("🔬 Evidence, Model Quality & Learning")
+    st.caption("Social posts are leads, not facts. The system weights verified and official sources higher and flags contradictions.")
+    db = get_session()
+    try:
+        evidence = (db.query(ResearchEvidence).filter_by(sport=selected_sport)
+                    .order_by(ResearchEvidence.created_at.desc()).limit(50).all())
+        settled = (db.query(PickOutcome).filter_by(sport=selected_sport)
+                   .filter(PickOutcome.result.in_(["win", "loss", "push"])).all())
+        if evidence:
+            frame = pd.DataFrame([{"Type": e.source_type, "Class": e.classification,
+                "Reliability": e.reliability, "Impact": e.impact, "Source": e.source_name,
+                "Published": e.published_at} for e in evidence])
+            st.dataframe(frame, hide_index=True, use_container_width=True)
+        else: st.info("No classified evidence yet; the scheduler will populate it after ingestion.")
+        if settled:
+            wins = sum(p.result == "win" for p in settled if p.result != "push")
+            decided = sum(p.result != "push" for p in settled)
+            st.metric("Settled pick win rate", f"{wins / decided:.1%}" if decided else "N/A")
+    finally: db.close()

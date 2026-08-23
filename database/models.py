@@ -477,6 +477,67 @@ class PropEdgeDB(Base):
     )
 
 
+# Research audit trail and learning records. These are additive: existing installs can
+# create them safely via `python database/migrate.py` or init_db.py.
+class ResearchEvidence(Base):
+    __tablename__ = "research_evidence"
+    id = Column(Integer, primary_key=True)
+    sport = Column(String(10), nullable=False)
+    game_id = Column(String(50), index=True)
+    source_type = Column(String(30), nullable=False)  # news / reddit / x / official
+    source_url = Column(String(1000), unique=True)
+    source_name = Column(String(100))
+    text = Column(Text)
+    classification = Column(String(50))  # injury / lineup / weather / market / noise
+    entities = Column(JSON)
+    reliability = Column(Float, default=0.3)
+    impact = Column(Float, default=0.0)
+    contradiction_key = Column(String(200))
+    published_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ModelRun(Base):
+    __tablename__ = "model_runs"
+    id = Column(Integer, primary_key=True)
+    run_id = Column(String(64), unique=True, nullable=False)
+    sport = Column(String(10), nullable=False)
+    model_version = Column(String(50), nullable=False)
+    inputs = Column(JSON)
+    outputs = Column(JSON)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PickOutcome(Base):
+    __tablename__ = "pick_outcomes"
+    id = Column(Integer, primary_key=True)
+    prop_edge_id = Column(Integer, ForeignKey("prop_edges.id"), index=True)
+    sport = Column(String(10), nullable=False)
+    selection = Column(String(300), nullable=False)
+    line = Column(Float)
+    odds = Column(Integer)
+    projected_probability = Column(Float)
+    closing_line = Column(Float)
+    actual_value = Column(Float)
+    result = Column(String(20), default="pending")
+    roi = Column(Float)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    settled_at = Column(DateTime)
+
+
+class ParlayCandidate(Base):
+    __tablename__ = "parlay_candidates"
+    id = Column(Integer, primary_key=True)
+    sport = Column(String(10), nullable=False)
+    legs = Column(JSON, nullable=False)
+    correlation = Column(Float)
+    fair_probability = Column(Float)
+    market_odds = Column(Integer)
+    edge = Column(Float)
+    warning = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # ══════════════════════════════════════════════════════════════════════
 #  DATABASE CONNECTION HELPERS
 # ══════════════════════════════════════════════════════════════════════

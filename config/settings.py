@@ -24,6 +24,12 @@ REDDIT_CLIENT_SECRET  = os.getenv("REDDIT_CLIENT_SECRET", "")
 REDDIT_USER_AGENT     = os.getenv("REDDIT_USER_AGENT", "SportsBettingBot/1.0")
 TWITTER_BEARER_TOKEN  = os.getenv("TWITTER_BEARER_TOKEN", "")
 ANTHROPIC_API_KEY     = os.getenv("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY        = os.getenv("OPENAI_API_KEY", "")
+AI_PROVIDER           = os.getenv("AI_PROVIDER", "heuristic").lower()  # heuristic / anthropic
+AI_MODEL              = os.getenv("AI_MODEL", "claude-3-5-haiku-latest")
+X_SEARCH_QUERY_SUFFIX = os.getenv("X_SEARCH_QUERY_SUFFIX", "-is:retweet lang:en")
+MIN_EDGE_PROBABILITY  = float(os.getenv("MIN_EDGE_PROBABILITY", "0.54"))
+MONTE_CARLO_SIMS      = int(os.getenv("MONTE_CARLO_SIMS", "20000"))
 PINECONE_API_KEY      = os.getenv("PINECONE_API_KEY", "")
 PINECONE_ENVIRONMENT  = os.getenv("PINECONE_ENVIRONMENT", "")
 
