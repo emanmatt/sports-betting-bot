@@ -222,7 +222,7 @@ with st.sidebar:
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
     "📅 Today's Games",
-    "🔥 Top Hits",
+    "🔥 Top Props",
     "⭐ Best Props",
     "🛒 Line Shop",
     "💰 Edges",
