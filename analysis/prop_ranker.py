@@ -119,7 +119,13 @@ class PropRanker:
         if not rows:
             return []
 
-        rows = sorted(rows, key=lambda s: s.game_id, reverse=True)[:20]
+        # Sort by actual game DATE descending (most recent first).
+        # game_id string sort is NOT chronological — that was the bug
+        # that made stale high-hit games look like the recent 10.
+        def _date_key(s):
+            rs = s.raw_stats or {}
+            return rs.get("date", "")
+        rows = sorted(rows, key=_date_key, reverse=True)[:20]
         values = []
         for s in rows:
             rs = s.raw_stats or {}

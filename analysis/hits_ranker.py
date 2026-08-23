@@ -94,7 +94,8 @@ class HitsRanker:
             return {}
 
         # Sort by game_id desc (most recent first)
-        stats = sorted(stats, key=lambda s: s.game_id, reverse=True)[:20]
+        stats = sorted(stats, key=lambda s: (s.raw_stats or {}).get("date", ""),
+                      reverse=True)[:20]
 
         # Extract hit values from raw_stats (batters only)
         hit_values = []
