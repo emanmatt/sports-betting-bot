@@ -22,21 +22,32 @@ from loguru import logger
 from database.models import get_session, PlayerStats
 
 # Standard prop lines to evaluate each stat against
-# (line, label, what counts as a "hit" of the prop)
+# (stat, line, label) — "hit" means value > line
 BATTER_PROPS = [
-    ("hits",        0.5, "1+ Hits"),
-    ("hits",        1.5, "2+ Hits"),
-    ("total_bases", 1.5, "2+ Total Bases"),
-    ("total_bases", 2.5, "3+ Total Bases"),
-    ("rbi",         0.5, "1+ RBI"),
-    ("home_runs",   0.5, "Home Run"),
-    ("runs",        0.5, "1+ Runs"),
+    ("hits",           0.5, "1+ Hits"),
+    ("hits",           1.5, "2+ Hits"),
+    ("total_bases",    1.5, "2+ Total Bases"),
+    ("total_bases",    2.5, "3+ Total Bases"),
+    ("rbi",            0.5, "1+ RBI"),
+    ("runs",           0.5, "1+ Runs"),
+    ("home_runs",      0.5, "Home Run"),
+    ("hits_runs_rbis", 1.5, "2+ H+R+RBI"),
+    ("hits_runs_rbis", 2.5, "3+ H+R+RBI"),
+    ("hitter_fantasy", 7.5, "Hitter Fantasy 8+"),
+    ("hitter_fantasy", 9.5, "Hitter Fantasy 10+"),
+    ("stolen_bases",   0.5, "Stolen Base"),
 ]
 
 PITCHER_PROPS = [
-    ("strikeouts",  4.5, "5+ Strikeouts"),
-    ("strikeouts",  5.5, "6+ Strikeouts"),
-    ("strikeouts",  6.5, "7+ Strikeouts"),
+    ("strikeouts",      4.5, "5+ Strikeouts"),
+    ("strikeouts",      5.5, "6+ Strikeouts"),
+    ("strikeouts",      6.5, "7+ Strikeouts"),
+    ("outs",           15.5, "16+ Outs (5.1 IP)"),
+    ("outs",           17.5, "18+ Outs (6 IP)"),
+    ("hits_allowed",    5.5, "Over 5.5 Hits Allowed"),
+    ("hits_allowed",    6.5, "Over 6.5 Hits Allowed"),
+    ("pitcher_fantasy", 14.5, "Pitcher Fantasy 15+"),
+    ("pitcher_fantasy", 17.5, "Pitcher Fantasy 18+"),
 ]
 
 

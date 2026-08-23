@@ -97,30 +97,61 @@ class MLBGameLogBackfill:
                 date = split.get("date", "")
 
                 if is_pitcher:
+                    ip = float(stat.get("inningsPitched", 0) or 0)
+                    # Convert IP (e.g. 5.2 = 5 and 2/3) to outs
+                    whole = int(ip)
+                    frac = round((ip - whole) * 10)  # .1=1 out, .2=2 outs
+                    outs = whole * 3 + frac
+                    er = stat.get("earnedRuns", 0)
+                    hits_allowed = stat.get("hits", 0)
+                    walks = stat.get("baseOnBalls", 0)
+                    ks = stat.get("strikeOuts", 0)
+                    # DraftKings pitcher fantasy: IP*2.25 + K*2 + W*4 - ER*2 + ...
+                    wins = 4 if stat.get("wins", 0) else 0
+                    pitcher_fantasy = round(outs/3 * 2.25 + ks * 2 + wins
+                                           - er * 2 - hits_allowed * 0.6
+                                           - walks * 0.6, 1)
                     games.append({
                         "game_pk": game.get("gamePk"),
                         "date": date,
-                        "strikeouts": stat.get("strikeOuts", 0),
-                        "innings": float(stat.get("inningsPitched", 0) or 0),
-                        "earned_runs": stat.get("earnedRuns", 0),
-                        "hits_allowed": stat.get("hits", 0),
+                        "strikeouts": ks,
+                        "innings": ip,
+                        "outs": outs,
+                        "earned_runs": er,
+                        "hits_allowed": hits_allowed,
+                        "walks_allowed": walks,
+                        "pitcher_fantasy": pitcher_fantasy,
                     })
                 else:
                     hits = stat.get("hits", 0)
                     doubles = stat.get("doubles", 0)
                     triples = stat.get("triples", 0)
                     hrs = stat.get("homeRuns", 0)
+                    rbi = stat.get("rbi", 0)
+                    runs = stat.get("runs", 0)
+                    walks = stat.get("baseOnBalls", 0)
+                    sb = stat.get("stolenBases", 0)
                     # Total bases = singles + 2*doubles + 3*triples + 4*HR
                     singles = hits - doubles - triples - hrs
                     total_bases = singles + 2*doubles + 3*triples + 4*hrs
+                    # H+R+RBI combo prop
+                    hrr = hits + runs + rbi
+                    # DraftKings hitter fantasy: 1B*3 + 2B*5 + 3B*8 + HR*10
+                    #   + RBI*2 + R*2 + BB*2 + SB*5
+                    hitter_fantasy = (singles*3 + doubles*5 + triples*8 + hrs*10
+                                     + rbi*2 + runs*2 + walks*2 + sb*5)
                     games.append({
                         "game_pk": game.get("gamePk"),
                         "date": date,
                         "hits": hits,
                         "home_runs": hrs,
-                        "rbi": stat.get("rbi", 0),
+                        "rbi": rbi,
                         "total_bases": total_bases,
-                        "runs": stat.get("runs", 0),
+                        "runs": runs,
+                        "walks": walks,
+                        "stolen_bases": sb,
+                        "hits_runs_rbis": hrr,
+                        "hitter_fantasy": hitter_fantasy,
                     })
         return games
 
