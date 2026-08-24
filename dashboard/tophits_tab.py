@@ -195,6 +195,10 @@ def render_tophits_tab(selected_sport: str):
 - **➖** = average pitcher
 - **🔴 Tough** = ace-level pitcher (high K, low ERA) — harder to hit off
 
+**Opp Team** (opposing team strength)
+- For **batters**: the opposing pitching staff — 🟢 weak staff (easier), 🔴 strong staff (harder)
+- For **pitchers**: the opposing offense — 🟢 weak-hitting team (easier to go deep / rack up outs), 🔴 strong offense (harder, may get knocked out early)
+
 **Park** (stadium's effect on offense)
 - **🟢** = hitter-friendly park (boosts hits/HRs)
 - **➖** = neutral

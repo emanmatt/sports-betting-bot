@@ -82,6 +82,8 @@ class PropRank:
     fatigue_note:   str = ""
     fatigue_adj:    float = 0.0
     contract_flag:  str = ""       # "⚡ Contract year" when known
+    team_adj:       float = 0.0    # opposing team quality adjustment
+    team_note:      str = ""
     opp_pitcher:   str = ""
     game_status:   str = "upcoming"   # upcoming / live
     game_label:    str = ""
@@ -177,6 +179,11 @@ class PropRanker:
         if not pr.is_pitcher:
             score += pr.pitcher_adj
 
+        # Opposing TEAM quality:
+        #  - pitchers: vs opposing offense (strong offense = harder)
+        #  - batters: vs opposing pitching staff (strong staff = harder)
+        score += pr.team_adj
+
         # Park factor (batters only) — hitter parks help, pitcher parks hurt
         if not pr.is_pitcher:
             score += pr.park_adj * 0.6   # scale it down a touch
@@ -225,7 +232,8 @@ class PropRanker:
                     park_adj=0.0, park_note="",
                     pitcher_adj=0.0, pitcher_note="",
                     injury_flag="", fatigue_adj=0.0, fatigue_note="",
-                    contract_flag="", game_matchup="") -> PropRank:
+                    contract_flag="", game_matchup="",
+                    team_adj=0.0, team_note="") -> PropRank:
         values = self._get_stat_values(player_name, stat)
         if not values:
             return None
@@ -247,6 +255,7 @@ class PropRanker:
             injury_flag=injury_flag,
             fatigue_adj=fatigue_adj, fatigue_note=fatigue_note,
             contract_flag=contract_flag,
+            team_adj=team_adj, team_note=team_note,
         )
         pr.games = len(values)
         pr.l10_rate = self._rate_over(values[:10], line)
@@ -283,6 +292,11 @@ class PropRanker:
             matchup = PitcherMatchup()
         except Exception:
             matchup = None
+        try:
+            from analysis.team_quality import TeamQualityEngine
+            teamq = TeamQualityEngine()
+        except Exception:
+            teamq = None
 
         for game in lineups_data:
             venue = game.get("venue", "")
@@ -320,6 +334,15 @@ class PropRanker:
                     except Exception:
                         pass
 
+                # Opposing pitching STAFF quality (team-level, for bullpen impact)
+                bat_team_adj, bat_team_note = 0.0, ""
+                if teamq and opp:
+                    try:
+                        opp_tq = teamq.get_team_quality(opp)
+                        bat_team_adj, bat_team_note = teamq.batter_prop_adjustment(opp_tq)
+                    except Exception:
+                        pass
+
                 for batter in lineup:
                     name = batter.get("name") if isinstance(batter, dict) else batter
                     order_raw = batter.get("batting_order") if isinstance(batter, dict) else None
@@ -346,6 +369,7 @@ class PropRanker:
                             pitcher_adj=pq_adj, pitcher_note=pq_note,
                             injury_flag=inj_flag,
                             game_matchup=game_matchup,
+                            team_adj=bat_team_adj, team_note=bat_team_note,
                         )
                         if pr and pr.games >= 5:  # need enough sample
                             props.append(pr)
@@ -357,11 +381,20 @@ class PropRanker:
             ]:
                 if not pitcher_name:
                     continue
+                # Opposing offense quality (strong offense = harder for pitcher)
+                pit_team_adj, pit_team_note = 0.0, ""
+                if teamq and opp:
+                    try:
+                        opp_off = teamq.get_team_quality(opp)
+                        pit_team_adj, pit_team_note = teamq.pitcher_prop_adjustment(opp_off)
+                    except Exception:
+                        pass
                 for stat, line, label in PITCHER_PROPS:
                     pr = self._build_prop(
                         pitcher_name, team, opp, venue, True, stat, line, label,
                         opp_pitcher="", game_status=game_status,
                         park_note=pk_note, game_matchup=game_matchup,
+                        team_adj=pit_team_adj, team_note=pit_team_note,
                     )
                     if pr and pr.games >= 5:
                         props.append(pr)
@@ -392,6 +425,8 @@ class PropRanker:
                 "vs": p.opp_pitcher or p.opponent or "-",
                 "Matchup": ("🔴 Tough" if p.pitcher_adj <= -5 else
                            "🟢 Soft" if p.pitcher_adj >= 4 else "➖") if not p.is_pitcher else "-",
+                "Opp Team": ("🔴 Tough" if p.team_adj <= -5 else
+                            "🟢 Soft" if p.team_adj >= 4 else "➖"),
                 "Park": ("🟢" if p.park_adj >= 5 else
                         "🔴" if p.park_adj <= -5 else "➖"),
                 "Flags": " ".join(filter(None, [
