@@ -112,6 +112,15 @@ def render_tophits_tab(selected_sport: str):
                     for l in lineups_data
                 ]
 
+                # Log top predictions for the learning loop
+                try:
+                    from analysis.track_record import TrackRecord
+                    tr = TrackRecord()
+                    tr.log_predictions(props, top_n=20)
+                    tr.close()
+                except Exception:
+                    pass
+
                 upcoming = sum(1 for l in lineups_data if l["status"] == "upcoming")
                 live = sum(1 for l in lineups_data if l["status"] == "live")
                 confirmed = sum(1 for l in lineups_data if l["confirmed"])

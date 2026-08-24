@@ -49,38 +49,6 @@ def job_update_news():
     client.run_all_sports()
 
 
-def job_update_social():
-    """Collect Reddit and optional X posts. Missing credentials are a no-op."""
-    from data_ingestion.soft.reddit_client import RedditClient
-    from data_ingestion.soft.twitter_client import TwitterClient
-    from database.models import get_session, SocialPost
-    db = get_session()
-    try:
-        reddit, x_client = RedditClient(), TwitterClient()
-        for sport in SUPPORTED_SPORTS:
-            posts = reddit.get_betting_chatter()
-            if x_client.enabled: posts += x_client.search(f"{sport} injury OR lineup")
-            for post in posts:
-                post_id = post.get("post_id") or post.get("url")
-                if not post_id or db.query(SocialPost).filter_by(post_id=post_id).first(): continue
-                db.add(SocialPost(sport=sport, platform=post.get("platform", "reddit"), source_name=post.get("subreddit", post.get("source_name", "reddit")),
-                    post_id=post_id[:100], author=post.get("author"), content=(post.get("text") or post.get("content") or post.get("title", ""))[:10000],
-                    url=post.get("url"), upvotes=post.get("score", post.get("upvotes", 0)), comments=post.get("num_comments", post.get("comments", 0)),
-                    is_verified_source=post.get("is_verified_source", False), published_at=datetime.utcnow()))
-        db.commit()
-    except Exception as exc:
-        db.rollback(); logger.warning(f"[Scheduler] Social update failed: {exc}")
-    finally: db.close()
-
-
-def job_research_synthesis():
-    from analysis.research_orchestrator import ResearchOrchestrator
-    orchestrator = ResearchOrchestrator()
-    for sport in SUPPORTED_SPORTS:
-        summary = orchestrator.run(sport)
-        logger.info(f"[Research] {sport}: {summary['actionable_count']} actionable evidence items")
-
-
 def job_update_injuries():
     """Pull injury reports. Runs every hour."""
     from data_ingestion.official.espn_client import ESPNClient
@@ -193,6 +161,24 @@ def job_ai_news_analysis():
         logger.error(f"[Scheduler] AI news job failed: {e}")
 
 
+def job_grade_predictions():
+    """
+    Grade past predictions against real results — the learning loop.
+    Runs daily after game logs update.
+    """
+    logger.info("[Scheduler] 📊 Grading past predictions...")
+    try:
+        from analysis.track_record import TrackRecord
+        tr = TrackRecord()
+        try:
+            graded = tr.grade_pending()
+            logger.info(f"[Scheduler] Graded {graded} predictions.")
+        finally:
+            tr.close()
+    except Exception as e:
+        logger.error(f"[Scheduler] Prediction grading failed: {e}")
+
+
 def job_update_gamelogs():
     """
     Backfill/refresh player game logs from MLB Stats API.
@@ -301,8 +287,6 @@ def main():
         job_update_news, IntervalTrigger(minutes=30),
         id="news", name="News Feed", max_instances=1
     )
-    scheduler.add_job(job_update_social, IntervalTrigger(minutes=30), id="social", name="Reddit and X", max_instances=1)
-    scheduler.add_job(job_research_synthesis, IntervalTrigger(hours=1), id="research", name="Evidence Synthesis", max_instances=1)
     scheduler.add_job(
         job_update_injuries, IntervalTrigger(hours=2),
         id="injuries", name="Injury Reports", max_instances=1
@@ -322,6 +306,10 @@ def main():
     scheduler.add_job(
         job_update_gamelogs, CronTrigger(hour=5, minute=0),
         id="gamelogs", name="Player Game Logs", max_instances=1
+    )
+    scheduler.add_job(
+        job_grade_predictions, CronTrigger(hour=6, minute=30),
+        id="grade_preds", name="Grade Predictions", max_instances=1
     )
     scheduler.add_job(
         job_full_daily_refresh, CronTrigger(hour=7, minute=0),
