@@ -220,7 +220,7 @@ with st.sidebar:
 
 # ── Main tabs ─────────────────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
     "📅 Today's Games",
     "🔥 Top Props",
     "⭐ Best Props",
@@ -232,6 +232,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
     "📈 Line Movement",
     "🤖 Claude",
     "📊 Track Record",
+    "🎰 Parlays",
 ])
 
 
@@ -577,3 +578,13 @@ with tab11:
         render_track_record_tab()
     except Exception as e:
         st.error(f"Track Record error: {e}")
+
+# ════════════════════════════════════════════════════════
+# TAB 12: PARLAY BUILDER
+# ════════════════════════════════════════════════════════
+with tab12:
+    try:
+        from dashboard.parlay_tab import render_parlay_tab
+        render_parlay_tab()
+    except Exception as e:
+        st.error(f"Parlay Builder error: {e}")
