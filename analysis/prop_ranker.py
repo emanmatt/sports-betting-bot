@@ -74,6 +74,8 @@ class PropRank:
     weather_boost: bool = False
     weather_note:  str = ""
     opp_pitcher:   str = ""
+    game_status:   str = "upcoming"   # upcoming / live
+    game_label:    str = ""
     # Score
     score:         float = 0.0
     tier:          str = ""
@@ -185,7 +187,8 @@ class PropRanker:
     def _build_prop(self, player_name, team, opponent, venue,
                     is_pitcher, stat, line, label,
                     batting_order=None, weather_boost=False,
-                    weather_note="", opp_pitcher="") -> PropRank:
+                    weather_note="", opp_pitcher="",
+                    game_status="upcoming") -> PropRank:
         values = self._get_stat_values(player_name, stat)
         if not values:
             return None
@@ -196,6 +199,8 @@ class PropRanker:
             prop_label=label, prop_line=line,
             batting_order=batting_order, weather_boost=weather_boost,
             weather_note=weather_note, opp_pitcher=opp_pitcher,
+            game_status=game_status,
+            game_label=("🔴 LIVE" if game_status == "live" else "Upcoming"),
         )
         pr.games = len(values)
         pr.l10_rate = self._rate_over(values[:10], line)
@@ -227,6 +232,7 @@ class PropRanker:
 
         for game in lineups_data:
             venue = game.get("venue", "")
+            game_status = game.get("status", "upcoming")
             weather = weather_by_venue.get(venue)
             wboost = False
             wnote = ""
@@ -261,6 +267,7 @@ class PropRanker:
                             name, team, opp, venue, False, stat, line, label,
                             batting_order=order, weather_boost=wboost,
                             weather_note=wnote, opp_pitcher=opp_pitcher,
+                            game_status=game_status,
                         )
                         if pr and pr.games >= 5:  # need enough sample
                             props.append(pr)
@@ -275,7 +282,7 @@ class PropRanker:
                 for stat, line, label in PITCHER_PROPS:
                     pr = self._build_prop(
                         pitcher_name, team, opp, venue, True, stat, line, label,
-                        opp_pitcher="",
+                        opp_pitcher="", game_status=game_status,
                     )
                     if pr and pr.games >= 5:
                         props.append(pr)
@@ -292,6 +299,7 @@ class PropRanker:
             rows.append({
                 "Rank": i,
                 "Tier": p.tier,
+                "Status": p.game_label,
                 "Player": p.player_name,
                 "Prop": p.prop_label,
                 "Type": "Pitcher" if p.is_pitcher else "Batter",

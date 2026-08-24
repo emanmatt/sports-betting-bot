@@ -45,9 +45,17 @@ def render_tophits_tab(selected_sport: str):
                 games = mlb.get_todays_games()
                 lineups_data = []
                 weather_by_venue = {}
+                skipped_final = 0
 
                 progress = st.progress(0)
                 for i, g in enumerate(games):
+                    # Classify game status — skip finished games entirely
+                    game_status = mlb.classify_status(g.status)
+                    if game_status == "final":
+                        skipped_final += 1
+                        progress.progress((i + 1) / max(len(games), 1))
+                        continue
+
                     lineup = mlb.get_lineup(g.game_pk)
                     if g.venue and g.venue not in weather_by_venue:
                         weather_by_venue[g.venue] = weather.get_stadium_weather(g.venue)
@@ -57,6 +65,9 @@ def render_tophits_tab(selected_sport: str):
                         "home_team": g.home_team,
                         "away_team": g.away_team,
                         "venue": g.venue,
+                        "status": game_status,
+                        "status_raw": g.status,
+                        "game_time": g.game_time,
                         "home_pitcher": g.home_pitcher,
                         "away_pitcher": g.away_pitcher,
                         "home_lineup": lineup.get("home", []),
@@ -74,9 +85,20 @@ def render_tophits_tab(selected_sport: str):
                 st.session_state["prop_ranks"] = props
                 st.session_state["prop_rank_rows"] = rows
 
+                upcoming = sum(1 for l in lineups_data if l["status"] == "upcoming")
+                live = sum(1 for l in lineups_data if l["status"] == "live")
                 confirmed = sum(1 for l in lineups_data if l["confirmed"])
-                st.success(f"Ranked {len(props)} props across {confirmed} "
-                          f"confirmed lineups + pitchers!")
+
+                msg = f"Ranked {len(props)} props — {upcoming} upcoming games"
+                if live:
+                    msg += f", 🔴 {live} LIVE"
+                if skipped_final:
+                    msg += f" (skipped {skipped_final} finished)"
+                st.success(msg)
+                if upcoming == 0 and live == 0:
+                    st.warning("⚠️ No upcoming or live games right now — all of "
+                              "today's games may be finished. Check back before "
+                              "the next slate.")
             except Exception as e:
                 st.error(f"Ranking failed: {e}")
                 import traceback

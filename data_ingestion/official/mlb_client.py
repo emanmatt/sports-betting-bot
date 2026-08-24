@@ -107,6 +107,20 @@ class MLBClient:
         logger.info(f"[MLB] {len(games)} games on {date_str}")
         return games
 
+    def classify_status(self, status: str) -> str:
+        """
+        Classify a game's detailed status into: upcoming / live / final.
+        """
+        status_lower = (status or "").lower()
+        if any(w in status_lower for w in
+               ["final", "completed", "game over", "postponed", "suspended"]):
+            return "final"
+        if any(w in status_lower for w in
+               ["in progress", "live", "delayed", "warmup", "manager challenge"]):
+            return "live"
+        # Scheduled, Pre-Game, Preview, etc.
+        return "upcoming"
+
     def get_lineup(self, game_pk: int) -> dict:
         """
         Get confirmed lineups for a game.
