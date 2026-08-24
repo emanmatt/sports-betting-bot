@@ -85,6 +85,7 @@ class PropRank:
     opp_pitcher:   str = ""
     game_status:   str = "upcoming"   # upcoming / live
     game_label:    str = ""
+    game_matchup:  str = ""           # "Away @ Home"
     # Score
     score:         float = 0.0
     tier:          str = ""
@@ -224,7 +225,7 @@ class PropRanker:
                     park_adj=0.0, park_note="",
                     pitcher_adj=0.0, pitcher_note="",
                     injury_flag="", fatigue_adj=0.0, fatigue_note="",
-                    contract_flag="") -> PropRank:
+                    contract_flag="", game_matchup="") -> PropRank:
         values = self._get_stat_values(player_name, stat)
         if not values:
             return None
@@ -240,6 +241,7 @@ class PropRanker:
             weather_note=weather_note, opp_pitcher=opp_pitcher,
             game_status=game_status,
             game_label=("🔴 LIVE" if game_status == "live" else "Upcoming"),
+            game_matchup=game_matchup,
             park_adj=park_adj, park_note=park_note,
             pitcher_adj=pitcher_adj, pitcher_note=pitcher_note,
             injury_flag=injury_flag,
@@ -285,6 +287,7 @@ class PropRanker:
         for game in lineups_data:
             venue = game.get("venue", "")
             game_status = game.get("status", "upcoming")
+            game_matchup = game.get("game", "")
             weather = weather_by_venue.get(venue)
             wboost = False
             wnote = ""
@@ -342,6 +345,7 @@ class PropRanker:
                             park_adj=pk_adj, park_note=pk_note,
                             pitcher_adj=pq_adj, pitcher_note=pq_note,
                             injury_flag=inj_flag,
+                            game_matchup=game_matchup,
                         )
                         if pr and pr.games >= 5:  # need enough sample
                             props.append(pr)
@@ -357,7 +361,7 @@ class PropRanker:
                     pr = self._build_prop(
                         pitcher_name, team, opp, venue, True, stat, line, label,
                         opp_pitcher="", game_status=game_status,
-                        park_note=pk_note,
+                        park_note=pk_note, game_matchup=game_matchup,
                     )
                     if pr and pr.games >= 5:
                         props.append(pr)
@@ -375,6 +379,7 @@ class PropRanker:
                 "Rank": i,
                 "Tier": p.tier,
                 "Status": p.game_label,
+                "Game": p.game_matchup,
                 "Player": p.player_name,
                 "Prop": p.prop_label,
                 "Type": "Pitcher" if p.is_pitcher else "Batter",

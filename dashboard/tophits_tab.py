@@ -132,6 +132,10 @@ def render_tophits_tab(selected_sport: str):
         """)
         return
 
+    # Game filter (full width, on top)
+    games_list = sorted(set(r["Game"] for r in rows if r.get("Game")))
+    game_filter = st.selectbox("🎮 Game", ["All Games"] + games_list)
+
     # Filters
     f1, f2, f3 = st.columns(3)
     with f1:
@@ -143,6 +147,8 @@ def render_tophits_tab(selected_sport: str):
         min_tier = st.selectbox("Min Tier", ["All", "A", "B", "C"])
 
     filtered = rows
+    if game_filter != "All Games":
+        filtered = [r for r in filtered if r.get("Game") == game_filter]
     if type_filter != "All":
         filtered = [r for r in filtered if r["Type"] == type_filter]
     if prop_filter != "All":
