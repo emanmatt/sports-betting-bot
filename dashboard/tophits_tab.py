@@ -12,6 +12,19 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import streamlit as st
 import pandas as pd
+from datetime import datetime, timezone, timedelta
+
+
+def _format_game_time(iso_time: str) -> str:
+    """Convert MLB's UTC ISO time to a readable ET clock time."""
+    if not iso_time:
+        return "TBD"
+    try:
+        dt = datetime.fromisoformat(iso_time.replace("Z", "+00:00"))
+        et = dt.astimezone(timezone(timedelta(hours=-4)))  # EDT
+        return et.strftime("%I:%M %p ET").lstrip("0")
+    except Exception:
+        return "TBD"
 
 
 def render_tophits_tab(selected_sport: str):
@@ -89,6 +102,15 @@ def render_tophits_tab(selected_sport: str):
 
                 st.session_state["prop_ranks"] = props
                 st.session_state["prop_rank_rows"] = rows
+                st.session_state["lineups_meta"] = [
+                    {
+                        "game": l["game"],
+                        "time": l.get("game_time", ""),
+                        "confirmed": l["confirmed"],
+                        "status": l["status"],
+                    }
+                    for l in lineups_data
+                ]
 
                 upcoming = sum(1 for l in lineups_data if l["status"] == "upcoming")
                 live = sum(1 for l in lineups_data if l["status"] == "live")
@@ -131,6 +153,20 @@ def render_tophits_tab(selected_sport: str):
         weather + batting order. Tiers: A (70+), B (55+), C (40+), pass (<40).
         """)
         return
+
+    # ── Games status panel — time + lineup confirmation ──
+    meta = st.session_state.get("lineups_meta", [])
+    if meta:
+        with st.expander("🕐 Today's Games — times & lineup status", expanded=True):
+            for m in meta:
+                time_str = _format_game_time(m.get("time", ""))
+                if m["status"] == "live":
+                    badge = "🔴 LIVE"
+                elif m["confirmed"]:
+                    badge = "✅ Lineup confirmed"
+                else:
+                    badge = "⏳ Lineup not posted yet (projected)"
+                st.markdown(f"**{m['game']}** — {time_str} · {badge}")
 
     # Game filter (full width, on top)
     games_list = sorted(set(r["Game"] for r in rows if r.get("Game")))
@@ -227,6 +263,35 @@ thin samples, and injuries.
     st.markdown("### 📊 Full Ranking — All Prop Types")
     df = pd.DataFrame(filtered)
     st.dataframe(df, hide_index=True, use_container_width=True, height=500)
+
+    # ── Reddit chatter check (Tier 3 soft signal) ──
+    st.divider()
+    st.markdown("### 💬 Social Chatter (Reddit)")
+    st.caption("⚠️ Tier 3 soft signal — what bettors are saying. Heavy public "
+               "buzz can be a FADE signal, not a follow. Use as context only, "
+               "never as your main reason to bet.")
+    if st.button("💬 Check Reddit for Top 5 Plays"):
+        with st.spinner("Searching Reddit..."):
+            try:
+                from data_ingestion.soft.reddit_client import RedditClient
+                reddit = RedditClient()
+                any_found = False
+                for r in filtered[:5]:
+                    chatter = reddit.search_player_chatter(r["Player"])
+                    if chatter:
+                        any_found = True
+                        st.markdown(f"**{r['Player']}** ({r['Prop']}):")
+                        for c in chatter[:3]:
+                            st.markdown(f"- [{c['score']}pts, r/{c['sub']}] "
+                                       f"{c['title'][:120]}")
+                    else:
+                        st.markdown(f"**{r['Player']}**: no recent Reddit mentions")
+                if not any_found:
+                    st.info("No significant Reddit chatter found on the top plays "
+                           "right now (or Reddit is rate-limiting). That's normal — "
+                           "quiet props are often better than hyped ones.")
+            except Exception as e:
+                st.warning(f"Reddit check unavailable: {e}")
 
     # Claude's take
     st.divider()

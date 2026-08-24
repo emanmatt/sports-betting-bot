@@ -108,6 +108,31 @@ class RedditClient:
         return [p for p in posts if "mlb" in (p["title"]+p["text"]).lower()
                 or "baseball" in (p["title"]+p["text"]).lower()]
 
+    def search_player_chatter(self, player_name: str) -> list[dict]:
+        """
+        Find recent posts/comments mentioning a specific player across
+        the main betting/baseball subs. Tier 3 soft signal only.
+        """
+        found = []
+        subs = ["sportsbook", "baseball", "MLB"]
+        last = player_name.split()[-1] if player_name else ""
+        for sub in subs:
+            try:
+                posts = self.get_subreddit_posts(sub, sort="hot", limit=25)
+                for p in posts:
+                    text = (p.get("title", "") + " " + p.get("text", "")).lower()
+                    if player_name.lower() in text or (last and last.lower() in text):
+                        found.append({
+                            "player": player_name,
+                            "sub": sub,
+                            "title": p.get("title", ""),
+                            "score": p.get("score", 0),
+                            "url": p.get("url", ""),
+                        })
+            except Exception:
+                continue
+        return found
+
     def run_all_sports(self):
         """Compatibility method for scheduler — pulls MLB chatter."""
         try:
