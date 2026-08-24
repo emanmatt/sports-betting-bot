@@ -117,7 +117,13 @@ def render_tophits_tab(selected_sport: str):
                     from analysis.track_record import TrackRecord
                     tr = TrackRecord()
                     tr.log_predictions(props, top_n=20)
+                    # Auto-grade any past predictions whose games have finished
+                    # (so the learning loop updates itself with no manual step)
+                    graded = tr.grade_pending()
                     tr.close()
+                    if graded:
+                        st.caption(f"📊 Learning loop: auto-graded {graded} "
+                                  "past prediction(s) against results.")
                 except Exception:
                     pass
 

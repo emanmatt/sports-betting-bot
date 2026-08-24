@@ -148,9 +148,13 @@ class TrackRecord:
         return graded
 
     def _get_actual_result(self, player_name, prop_stat, game_date, is_pitcher):
-        """Pull a player's actual stat value on a given date from MLB logs."""
+        """
+        Pull a player's actual stat on a date. Tries stored game logs first,
+        then falls back to fetching directly from MLB.com live — so grading
+        works even without a manual game-log rebuild.
+        """
+        # 1. Try stored game logs (fast)
         from database.models import PlayerStats
-        # Look in our stored game logs for that player + date
         rows = (self.db.query(PlayerStats)
                .filter(PlayerStats.sport == "MLB")
                .all())
@@ -160,13 +164,83 @@ class TrackRecord:
                 continue
             if str(rs.get("date", "")) != str(game_date):
                 continue
-            # Found the game
-            if prop_stat in rs:
-                return float(rs[prop_stat])
-            # Derived stats
-            if prop_stat == "hits_runs_rbis":
-                return float(rs.get("hits", 0) + rs.get("runs", 0) + rs.get("rbi", 0))
+            val = self._extract_stat(rs, prop_stat)
+            if val is not None:
+                return val
+
+        # 2. Fall back to live MLB.com fetch for that date
+        return self._fetch_result_from_mlb(player_name, prop_stat, game_date, is_pitcher)
+
+    def _extract_stat(self, rs: dict, prop_stat: str):
+        """Pull a stat value from a raw_stats dict, including derived ones."""
+        if prop_stat in rs:
+            return float(rs[prop_stat])
+        if prop_stat == "hits_runs_rbis":
+            return float(rs.get("hits", 0) + rs.get("runs", 0) + rs.get("rbi", 0))
         return None
+
+    def _fetch_result_from_mlb(self, player_name, prop_stat, game_date, is_pitcher):
+        """Fetch a player's box score stat for a specific date from MLB.com."""
+        try:
+            # Find the player's ID by name search
+            search = self.session.get(
+                f"{BASE}/people/search", params={"names": player_name}, timeout=10
+            )
+            if not search.ok:
+                return None
+            people = search.json().get("people", [])
+            if not people:
+                return None
+            player_id = people[0].get("id")
+
+            # Get their game log for the season, find that date
+            group = "pitching" if is_pitcher else "hitting"
+            r = self.session.get(
+                f"{BASE}/people/{player_id}/stats",
+                params={"stats": "gameLog", "season": str(game_date)[:4],
+                        "group": group},
+                timeout=12
+            )
+            if not r.ok:
+                return None
+            for sg in r.json().get("stats", []):
+                for split in sg.get("splits", []):
+                    if str(split.get("date", "")) != str(game_date):
+                        continue
+                    stat = split.get("stat", {})
+                    # Map prop_stat to MLB stat keys
+                    if is_pitcher:
+                        vals = {
+                            "strikeouts": stat.get("strikeOuts", 0),
+                            "hits_allowed": stat.get("hits", 0),
+                            "outs": self._ip_to_outs(stat.get("inningsPitched", 0)),
+                        }
+                    else:
+                        hits = stat.get("hits", 0)
+                        vals = {
+                            "hits": hits,
+                            "home_runs": stat.get("homeRuns", 0),
+                            "rbi": stat.get("rbi", 0),
+                            "runs": stat.get("runs", 0),
+                            "total_bases": stat.get("totalBases", 0),
+                            "stolen_bases": stat.get("stolenBases", 0),
+                            "hits_runs_rbis": hits + stat.get("runs", 0) + stat.get("rbi", 0),
+                        }
+                    if prop_stat in vals:
+                        return float(vals[prop_stat])
+            return None
+        except Exception:
+            return None
+
+    def _ip_to_outs(self, ip) -> int:
+        """Convert innings pitched (e.g. 5.2) to outs."""
+        try:
+            ip = float(ip)
+            whole = int(ip)
+            frac = round((ip - whole) * 10)
+            return whole * 3 + frac
+        except Exception:
+            return 0
 
     def get_stats(self) -> dict:
         """Compute overall + breakdown accuracy stats."""
