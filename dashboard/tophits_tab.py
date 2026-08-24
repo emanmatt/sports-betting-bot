@@ -136,6 +136,43 @@ def render_tophits_tab(selected_sport: str):
     games_list = sorted(set(r["Game"] for r in rows if r.get("Game")))
     game_filter = st.selectbox("🎮 Game", ["All Games"] + games_list)
 
+    # ── Legend / key ──
+    with st.expander("📖 Key — what the columns & symbols mean"):
+        st.markdown("""
+**Tier** (overall play strength, from the Score)
+- **A** = strongest (score 70+) · **B** = solid (55+) · **C** = playable (40+) · **pass** = weak
+
+**Status**
+- **Upcoming** = game hasn't started, bettable · **🔴 LIVE** = game in progress
+
+**Rate columns**
+- **L10** = % of last 10 games the player went over this prop line
+- **L15** = same over last 15 games (bigger sample = more stable)
+- **Season** = % over the line all season
+- **Avg** = average value of the stat per game (e.g. avg hits, avg outs)
+
+**Trend** (recent form vs season average)
+- **🔥** = hot (last 5 games above his norm) · **➡️** = stable · **🧊** = cold
+
+**Matchup** (batters only — quality of the pitcher they face)
+- **🟢 Soft** = beatable pitcher, good spot for a hit
+- **➖** = average pitcher
+- **🔴 Tough** = ace-level pitcher (high K, low ERA) — harder to hit off
+
+**Park** (stadium's effect on offense)
+- **🟢** = hitter-friendly park (boosts hits/HRs)
+- **➖** = neutral
+- **🔴** = pitcher-friendly park (suppresses offense)
+
+**Flags**
+- **⚠️ Questionable/Out** = injury concern
+- **⚡ Contract year** = added motivation (when data available)
+
+**Score** = 0-100 composite: recent form (~40%) + opposing pitcher (20%) +
+park (10%) + batting order + weather + rest, minus penalties for cold streaks,
+thin samples, and injuries.
+        """)
+
     # Filters
     f1, f2, f3 = st.columns(3)
     with f1:
