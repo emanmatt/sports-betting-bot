@@ -73,6 +73,15 @@ class PropRank:
     batting_order: int = None
     weather_boost: bool = False
     weather_note:  str = ""
+    # New context factors
+    park_note:      str = ""
+    park_adj:       float = 0.0
+    pitcher_note:   str = ""
+    pitcher_adj:    float = 0.0
+    injury_flag:    str = ""       # "" / "Questionable" / "Out"
+    fatigue_note:   str = ""
+    fatigue_adj:    float = 0.0
+    contract_flag:  str = ""       # "⚡ Contract year" when known
     opp_pitcher:   str = ""
     game_status:   str = "upcoming"   # upcoming / live
     game_label:    str = ""
@@ -146,35 +155,58 @@ class PropRanker:
         return round(sum(1 for v in values if v > line) / len(values) * 100)
 
     def _score(self, pr: PropRank) -> float:
-        """0-100 composite score for any prop."""
+        """
+        0-100 composite score.
+        Weights: recent form ~40%, opposing pitcher 20%, park 10%,
+        plus batting order, weather, and rest/fatigue as adjustments.
+        Injury applies as a penalty/drop.
+        """
         score = 0.0
-        score += pr.l10_rate * 0.45
-        score += pr.l15_rate * 0.20
+        # Recent form core (~40 pts from L10, 15 from L15)
+        score += pr.l10_rate * 0.40
+        score += pr.l15_rate * 0.15
 
-        # Recent form
+        # Recent form momentum
         if pr.recent_avg > pr.avg_value * 1.15:
-            score += 12
-        elif pr.recent_avg >= pr.avg_value:
-            score += 6
-
-        # Weather (batters only — helps hits/HR/TB)
-        if pr.weather_boost and not pr.is_pitcher:
             score += 8
+        elif pr.recent_avg >= pr.avg_value:
+            score += 4
+
+        # Opposing pitcher quality (batters only) — up to +8 / -12
+        if not pr.is_pitcher:
+            score += pr.pitcher_adj
+
+        # Park factor (batters only) — hitter parks help, pitcher parks hurt
+        if not pr.is_pitcher:
+            score += pr.park_adj * 0.6   # scale it down a touch
+
+        # Weather (batters)
+        if pr.weather_boost and not pr.is_pitcher:
+            score += 6
 
         # Batting order (batters)
         if pr.batting_order and not pr.is_pitcher:
             if pr.batting_order <= 3:
-                score += 10
+                score += 8
             elif pr.batting_order <= 5:
-                score += 6
+                score += 4
+
+        # Rest / fatigue adjustment (can be negative)
+        score += pr.fatigue_adj
 
         # Trend penalty
         if pr.trend == "cold":
-            score -= 10
+            score -= 8
 
         # Thin sample penalty
         if pr.games < 8:
             score -= 15
+
+        # Injury penalty
+        if pr.injury_flag == "Questionable":
+            score -= 12
+        elif pr.injury_flag == "Out":
+            score -= 100   # effectively drops it
 
         return max(0, min(100, round(score, 1)))
 
@@ -188,10 +220,17 @@ class PropRanker:
                     is_pitcher, stat, line, label,
                     batting_order=None, weather_boost=False,
                     weather_note="", opp_pitcher="",
-                    game_status="upcoming") -> PropRank:
+                    game_status="upcoming",
+                    park_adj=0.0, park_note="",
+                    pitcher_adj=0.0, pitcher_note="",
+                    injury_flag="", fatigue_adj=0.0, fatigue_note="",
+                    contract_flag="") -> PropRank:
         values = self._get_stat_values(player_name, stat)
         if not values:
             return None
+
+        # HR props use HR park factor, not hits
+        is_hr = stat == "home_runs"
 
         pr = PropRank(
             player_name=player_name, team=team, opponent=opponent,
@@ -201,6 +240,11 @@ class PropRanker:
             weather_note=weather_note, opp_pitcher=opp_pitcher,
             game_status=game_status,
             game_label=("🔴 LIVE" if game_status == "live" else "Upcoming"),
+            park_adj=park_adj, park_note=park_note,
+            pitcher_adj=pitcher_adj, pitcher_note=pitcher_note,
+            injury_flag=injury_flag,
+            fatigue_adj=fatigue_adj, fatigue_note=fatigue_note,
+            contract_flag=contract_flag,
         )
         pr.games = len(values)
         pr.l10_rate = self._rate_over(values[:10], line)
@@ -230,6 +274,14 @@ class PropRanker:
         weather_by_venue = weather_by_venue or {}
         props = []
 
+        # Lazy-load factor helpers
+        from analysis.park_factors import park_score_adjustment, park_note
+        try:
+            from analysis.pitcher_matchup import PitcherMatchup
+            matchup = PitcherMatchup()
+        except Exception:
+            matchup = None
+
         for game in lineups_data:
             venue = game.get("venue", "")
             game_status = game.get("status", "upcoming")
@@ -241,15 +293,29 @@ class PropRanker:
                 wboost = getattr(weather, "wind_effect", "") == "out" or \
                         (getattr(weather, "temp_f", 0) or 0) >= 85
 
+            # Park factor for this venue (computed once)
+            pk_adj = park_score_adjustment(venue)
+            pk_note = park_note(venue)
+
             # ── BATTERS ──
-            for side, team_k, opp_k, pitch_k in [
-                ("home_lineup", "home_team", "away_team", "away_pitcher"),
-                ("away_lineup", "away_team", "home_team", "home_pitcher"),
+            for side, team_k, opp_k, pitch_k, pitch_id_k in [
+                ("home_lineup", "home_team", "away_team", "away_pitcher", "away_pitcher_id"),
+                ("away_lineup", "away_team", "home_team", "home_pitcher", "home_pitcher_id"),
             ]:
                 lineup = game.get(side, [])
                 team = game.get(team_k, "")
                 opp = game.get(opp_k, "")
                 opp_pitcher = game.get(pitch_k, "")
+                opp_pitcher_id = game.get(pitch_id_k)
+
+                # Opposing pitcher quality (computed once per lineup side)
+                pq_adj, pq_note = 0.0, ""
+                if matchup and opp_pitcher:
+                    try:
+                        pq = matchup.get_pitcher_quality(opp_pitcher, opp_pitcher_id)
+                        pq_adj, pq_note = pq.adjustment, pq.note
+                    except Exception:
+                        pass
 
                 for batter in lineup:
                     name = batter.get("name") if isinstance(batter, dict) else batter
@@ -262,12 +328,20 @@ class PropRanker:
                         except (ValueError, TypeError):
                             order = None
 
+                    # Injury flag from batter dict if present
+                    inj_flag = ""
+                    if isinstance(batter, dict):
+                        inj_flag = batter.get("injury_flag", "")
+
                     for stat, line, label in BATTER_PROPS:
                         pr = self._build_prop(
                             name, team, opp, venue, False, stat, line, label,
                             batting_order=order, weather_boost=wboost,
                             weather_note=wnote, opp_pitcher=opp_pitcher,
                             game_status=game_status,
+                            park_adj=pk_adj, park_note=pk_note,
+                            pitcher_adj=pq_adj, pitcher_note=pq_note,
+                            injury_flag=inj_flag,
                         )
                         if pr and pr.games >= 5:  # need enough sample
                             props.append(pr)
@@ -283,6 +357,7 @@ class PropRanker:
                     pr = self._build_prop(
                         pitcher_name, team, opp, venue, True, stat, line, label,
                         opp_pitcher="", game_status=game_status,
+                        park_note=pk_note,
                     )
                     if pr and pr.games >= 5:
                         props.append(pr)
@@ -310,6 +385,14 @@ class PropRanker:
                 "Avg": p.avg_value,
                 "Trend": f"{trend_emoji}",
                 "vs": p.opp_pitcher or p.opponent or "-",
+                "Matchup": ("🔴 Tough" if p.pitcher_adj <= -5 else
+                           "🟢 Soft" if p.pitcher_adj >= 4 else "➖") if not p.is_pitcher else "-",
+                "Park": ("🟢" if p.park_adj >= 5 else
+                        "🔴" if p.park_adj <= -5 else "➖"),
+                "Flags": " ".join(filter(None, [
+                    "⚠️" + p.injury_flag if p.injury_flag else "",
+                    p.contract_flag,
+                ])) or "-",
                 "Score": p.score,
             })
         return rows

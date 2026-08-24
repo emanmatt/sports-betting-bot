@@ -70,6 +70,8 @@ def render_tophits_tab(selected_sport: str):
                         "game_time": g.game_time,
                         "home_pitcher": g.home_pitcher,
                         "away_pitcher": g.away_pitcher,
+                        "home_pitcher_id": g.home_pitcher_id,
+                        "away_pitcher_id": g.away_pitcher_id,
                         "home_lineup": lineup.get("home", []),
                         "away_lineup": lineup.get("away", []),
                         "confirmed": lineup.get("confirmed", False),
