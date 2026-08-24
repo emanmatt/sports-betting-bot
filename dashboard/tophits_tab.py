@@ -56,7 +56,9 @@ def render_tophits_tab(selected_sport: str):
                         progress.progress((i + 1) / max(len(games), 1))
                         continue
 
-                    lineup = mlb.get_lineup(g.game_pk)
+                    lineup = mlb.get_lineup_or_probable(
+                        g.game_pk, g.home_team_id, g.away_team_id
+                    )
                     if g.venue and g.venue not in weather_by_venue:
                         weather_by_venue[g.venue] = weather.get_stadium_weather(g.venue)
 
@@ -75,6 +77,7 @@ def render_tophits_tab(selected_sport: str):
                         "home_lineup": lineup.get("home", []),
                         "away_lineup": lineup.get("away", []),
                         "confirmed": lineup.get("confirmed", False),
+                        "projected": lineup.get("projected", False),
                     })
                     progress.progress((i + 1) / max(len(games), 1))
                 progress.empty()
@@ -97,6 +100,13 @@ def render_tophits_tab(selected_sport: str):
                 if skipped_final:
                     msg += f" (skipped {skipped_final} finished)"
                 st.success(msg)
+                projected = sum(1 for l in lineups_data
+                               if l.get("projected") and not l["confirmed"])
+                if projected:
+                    st.info(f"ℹ️ {projected} game(s) don't have official lineups "
+                           "posted yet — showing projected batters from the active "
+                           "roster. Re-run once lineups drop (1-3 hrs before game) "
+                           "for confirmed batting orders.")
                 if upcoming == 0 and live == 0:
                     st.warning("⚠️ No upcoming or live games right now — all of "
                               "today's games may be finished. Check back before "

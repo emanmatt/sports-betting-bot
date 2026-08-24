@@ -36,6 +36,8 @@ class MLBGame:
     status:         str
     venue:          str = ""
     venue_id:       int = None
+    home_team_id:   int = None
+    away_team_id:   int = None
     # Probable pitchers
     home_pitcher:   str = ""
     home_pitcher_id: int = None
@@ -98,6 +100,8 @@ class MLBClient:
                     status=g.get("status", {}).get("detailedState", ""),
                     venue=venue.get("name", ""),
                     venue_id=venue.get("id"),
+                    home_team_id=home.get("team", {}).get("id"),
+                    away_team_id=away.get("team", {}).get("id"),
                     home_pitcher=home_pitcher.get("fullName", ""),
                     home_pitcher_id=home_pitcher.get("id"),
                     away_pitcher=away_pitcher.get("fullName", ""),
@@ -154,6 +158,59 @@ class MLBClient:
 
         # Lineups confirmed if both sides have 9 batters
         result["confirmed"] = len(result["home"]) >= 9 and len(result["away"]) >= 9
+        return result
+
+    def get_probable_lineup(self, team_id: int, limit: int = 9) -> list[dict]:
+        """
+        Fallback when official lineup isn't posted: get the team's most
+        common recent batters (position players who've played recently).
+        Returns list of {name, id, position, batting_order} best-effort.
+        """
+        if not team_id:
+            return []
+        roster = self._get(f"../v1/teams/{team_id}/roster",
+                          {"rosterType": "active"})
+        if not roster:
+            return []
+
+        batters = []
+        for entry in roster.get("roster", []):
+            person = entry.get("person", {})
+            position = entry.get("position", {})
+            abbr = position.get("abbreviation", "")
+            # Only position players (skip pitchers)
+            if abbr in ["P", "SP", "RP"]:
+                continue
+            batters.append({
+                "name": person.get("fullName", ""),
+                "id": person.get("id"),
+                "position": abbr,
+                "batting_order": None,   # unknown until official
+            })
+        return batters[:limit]
+
+    def get_lineup_or_probable(self, game_pk: int,
+                               home_team_id: int = None,
+                               away_team_id: int = None) -> dict:
+        """
+        Get official lineup, or fall back to probable roster batters
+        so the board has batters even before lineups post.
+        Marks whether each side is confirmed or projected.
+        """
+        official = self.get_lineup(game_pk)
+        if official["confirmed"]:
+            official["projected"] = False
+            return official
+
+        # Fall back to probable rosters
+        result = {
+            "home": official["home"] if official["home"]
+                    else self.get_probable_lineup(home_team_id),
+            "away": official["away"] if official["away"]
+                    else self.get_probable_lineup(away_team_id),
+            "confirmed": False,
+            "projected": True,
+        }
         return result
 
     def get_injuries(self, team_id: int = None) -> list[dict]:
