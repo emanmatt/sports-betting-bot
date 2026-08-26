@@ -284,8 +284,29 @@ class PropRanker:
         pr.l10_under = 100 - pr.l10_rate
         pr.l15_under = 100 - pr.l15_rate
         pr.season_under = 100 - pr.season_rate
-        # Pick the stronger side by L10
-        pr.side = "over" if pr.l10_rate >= pr.l10_under else "under"
+
+        # Under plays only make sense on props where the OVER is the
+        # normal expectation (common events). On rare-event props
+        # (home runs, stolen bases, 3+ hits, high fantasy) almost
+        # EVERYONE is under, so an "under" carries no edge and often
+        # isn't even offered / is priced at huge juice. Restrict unders
+        # to "bread and butter" props where a cold player beating the
+        # under is a genuine, bettable signal.
+        UNDER_ELIGIBLE = {
+            "1+ Hits", "2+ Total Bases", "1+ RBI", "1+ Runs",
+            "2+ H+R+RBI", "Hitter Fantasy 8+",
+            "5+ Strikeouts", "6+ Strikeouts", "16+ Outs (5.1 IP)",
+            "18+ Outs (6 IP)", "Pitcher Fantasy 15+",
+        }
+        can_under = label in UNDER_ELIGIBLE
+
+        # Pick the stronger side by L10 — but only allow UNDER on
+        # eligible props AND only when the under is genuinely strong
+        # (the over rate is low enough to be a real fade).
+        if can_under and pr.l10_under > pr.l10_rate and pr.l10_rate <= 40:
+            pr.side = "under"
+        else:
+            pr.side = "over"
         pr.avg_value = round(sum(values) / len(values), 2)
         l5 = values[:5]
         pr.recent_avg = round(sum(l5) / len(l5), 2) if l5 else 0
