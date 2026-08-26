@@ -295,8 +295,37 @@ thin samples, and injuries.
 
     st.divider()
     st.markdown("### 📊 Full Ranking — All Prop Types")
+    st.caption("💡 Tip: click a column header to sort by it. **Hold Shift and "
+               "click a second header** to sort by both at once "
+               "(e.g. L10 then Side).")
+
     df = pd.DataFrame(filtered)
-    st.dataframe(df, hide_index=True, use_container_width=True, height=500)
+
+    # Add hidden numeric columns so % values sort as NUMBERS not text
+    def _pct_to_num(v):
+        try:
+            return float(str(v).replace("%", ""))
+        except (ValueError, TypeError):
+            return 0.0
+
+    if not df.empty:
+        if "L10" in df.columns:
+            df["L10 %"] = df["L10"].map(_pct_to_num)
+        if "L15" in df.columns:
+            df["L15 %"] = df["L15"].map(_pct_to_num)
+        if "Season" in df.columns:
+            df["Season %"] = df["Season"].map(_pct_to_num)
+
+    col_config = {
+        "L10 %": st.column_config.NumberColumn("L10 %", format="%d%%",
+                    help="Sortable numeric L10. Shift+click to add a second sort."),
+        "L15 %": st.column_config.NumberColumn("L15 %", format="%d%%"),
+        "Season %": st.column_config.NumberColumn("Season %", format="%d%%"),
+        "Score": st.column_config.NumberColumn("Score", help="Model score 0-100"),
+    }
+
+    st.dataframe(df, hide_index=True, use_container_width=True, height=500,
+                column_config=col_config)
 
     # ── Reddit chatter check (Tier 3 soft signal) ──
     st.divider()
