@@ -84,6 +84,9 @@ class PropRank:
     contract_flag:  str = ""       # "⚡ Contract year" when known
     team_adj:       float = 0.0    # opposing team quality adjustment
     team_note:      str = ""
+    platoon_adj:    float = 0.0    # handedness platoon adjustment
+    platoon_note:   str = ""
+    bvp_flag:       str = ""       # batter-vs-pitcher history flag
     opp_pitcher:   str = ""
     game_status:   str = "upcoming"   # upcoming / live
     game_label:    str = ""
@@ -184,6 +187,10 @@ class PropRanker:
         #  - batters: vs opposing pitching staff (strong staff = harder)
         score += pr.team_adj
 
+        # Platoon split (batters only) — handedness matchup
+        if not pr.is_pitcher:
+            score += pr.platoon_adj
+
         # Park factor (batters only) — hitter parks help, pitcher parks hurt
         if not pr.is_pitcher:
             score += pr.park_adj * 0.6   # scale it down a touch
@@ -233,7 +240,8 @@ class PropRanker:
                     pitcher_adj=0.0, pitcher_note="",
                     injury_flag="", fatigue_adj=0.0, fatigue_note="",
                     contract_flag="", game_matchup="",
-                    team_adj=0.0, team_note="") -> PropRank:
+                    team_adj=0.0, team_note="",
+                    platoon_adj=0.0, platoon_note="", bvp_flag="") -> PropRank:
         values = self._get_stat_values(player_name, stat)
         if not values:
             return None
@@ -256,6 +264,8 @@ class PropRanker:
             fatigue_adj=fatigue_adj, fatigue_note=fatigue_note,
             contract_flag=contract_flag,
             team_adj=team_adj, team_note=team_note,
+            platoon_adj=platoon_adj, platoon_note=platoon_note,
+            bvp_flag=bvp_flag,
         )
         pr.games = len(values)
         pr.l10_rate = self._rate_over(values[:10], line)
@@ -297,6 +307,19 @@ class PropRanker:
             teamq = TeamQualityEngine()
         except Exception:
             teamq = None
+        try:
+            from analysis.bvp_matchup import BvPMatchup
+            bvp = BvPMatchup()
+        except Exception:
+            bvp = None
+        try:
+            from analysis.rest_travel import RestTravelEngine
+            from data_ingestion.official.mlb_client import MLBClient
+            rest_engine = RestTravelEngine()
+            rest_mlb = MLBClient()
+        except Exception:
+            rest_engine = None
+            rest_mlb = None
 
         for game in lineups_data:
             venue = game.get("venue", "")
@@ -343,8 +366,50 @@ class PropRanker:
                     except Exception:
                         pass
 
+                # Rest / travel fatigue for THIS batting team (±6-8 points)
+                team_fatigue_adj, team_fatigue_note = 0.0, ""
+                if rest_engine and rest_mlb:
+                    try:
+                        team_id = game.get(team_k.replace("team", "team_id")) or \
+                                  game.get("home_team_id" if side == "home_lineup"
+                                          else "away_team_id")
+                        last_game = rest_mlb.get_team_last_game(team_id)
+                        if last_game:
+                            from datetime import datetime as _dt
+                            days_rest = 1
+                            try:
+                                today = _dt.now().date()
+                                lg_date = _dt.fromisoformat(str(last_game["date"])).date()
+                                days_rest = (today - lg_date).days
+                            except Exception:
+                                pass
+                            report = rest_engine.assess(
+                                team=team,
+                                current_city=team,      # home team city ~ team
+                                previous_city=None,     # simplified
+                                days_rest=days_rest,
+                                day_after_night=last_game.get("was_night", False),
+                            )
+                            # Convert 0-10 fatigue to a score adjustment.
+                            # Normal rest (low fatigue) = neutral (0).
+                            # Only real fatigue penalizes; genuine freshness
+                            # (extra rest, no travel) gives a small boost.
+                            fs = report.fatigue_score
+                            if fs <= 1:
+                                team_fatigue_adj = 3      # well rested
+                            elif fs <= 3:
+                                team_fatigue_adj = 0      # normal
+                            elif fs <= 5:
+                                team_fatigue_adj = -3     # moderate fatigue
+                            else:
+                                team_fatigue_adj = -7     # high fatigue
+                            team_fatigue_note = report.summary
+                    except Exception:
+                        pass
+
                 for batter in lineup:
                     name = batter.get("name") if isinstance(batter, dict) else batter
+                    batter_id = batter.get("id") if isinstance(batter, dict) else None
                     order_raw = batter.get("batting_order") if isinstance(batter, dict) else None
                     order = None
                     if order_raw is not None:
@@ -359,6 +424,17 @@ class PropRanker:
                     if isinstance(batter, dict):
                         inj_flag = batter.get("injury_flag", "")
 
+                    # Platoon split + BvP history (batter vs opposing pitcher)
+                    pl_adj, pl_note, bvp_flag = 0.0, "", ""
+                    if bvp and batter_id and opp_pitcher_id:
+                        try:
+                            mu = bvp.get_matchup(batter_id, opp_pitcher_id)
+                            pl_adj = mu.platoon_adj
+                            pl_note = mu.note
+                            bvp_flag = mu.bvp_flag
+                        except Exception:
+                            pass
+
                     for stat, line, label in BATTER_PROPS:
                         pr = self._build_prop(
                             name, team, opp, venue, False, stat, line, label,
@@ -370,6 +446,10 @@ class PropRanker:
                             injury_flag=inj_flag,
                             game_matchup=game_matchup,
                             team_adj=bat_team_adj, team_note=bat_team_note,
+                            platoon_adj=pl_adj, platoon_note=pl_note,
+                            bvp_flag=bvp_flag,
+                            fatigue_adj=team_fatigue_adj,
+                            fatigue_note=team_fatigue_note,
                         )
                         if pr and pr.games >= 5:  # need enough sample
                             props.append(pr)
@@ -427,11 +507,16 @@ class PropRanker:
                            "🟢 Soft" if p.pitcher_adj >= 4 else "➖") if not p.is_pitcher else "-",
                 "Opp Team": ("🔴 Tough" if p.team_adj <= -5 else
                             "🟢 Soft" if p.team_adj >= 4 else "➖"),
+                "Platoon": ("🟢" if p.platoon_adj >= 3 else
+                           "🔴" if p.platoon_adj <= -3 else "➖") if not p.is_pitcher else "-",
+                "Rest": ("🟢 Fresh" if p.fatigue_adj >= 3 else
+                        "🔴 Tired" if p.fatigue_adj <= -3 else "➖") if not p.is_pitcher else "-",
                 "Park": ("🟢" if p.park_adj >= 5 else
                         "🔴" if p.park_adj <= -5 else "➖"),
                 "Flags": " ".join(filter(None, [
                     "⚠️" + p.injury_flag if p.injury_flag else "",
                     p.contract_flag,
+                    p.bvp_flag,
                 ])) or "-",
                 "Score": p.score,
             })

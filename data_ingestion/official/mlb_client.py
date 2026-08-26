@@ -125,6 +125,58 @@ class MLBClient:
         # Scheduled, Pre-Game, Preview, etc.
         return "upcoming"
 
+    def get_team_last_game(self, team_id: int, before_date: str = None) -> dict:
+        """
+        Get a team's most recent game before a date — for computing
+        rest days, travel, and day-after-night fatigue.
+        Returns {date, venue, was_night, opponent_venue_city} best-effort.
+        """
+        if not team_id:
+            return {}
+        from datetime import datetime, timedelta
+        before = before_date or datetime.now().strftime("%Y-%m-%d")
+        # Look back 5 days for the previous game
+        start = (datetime.fromisoformat(before) - timedelta(days=5)).strftime("%Y-%m-%d")
+
+        data = self._get("schedule", {
+            "sportId": 1,
+            "teamId": team_id,
+            "startDate": start,
+            "endDate": before,
+            "hydrate": "venue",
+        })
+        if not data:
+            return {}
+
+        games = []
+        for date_block in data.get("dates", []):
+            for g in date_block.get("games", []):
+                gdate = g.get("gameDate", "")
+                status = g.get("status", {}).get("detailedState", "")
+                if "final" not in status.lower():
+                    continue
+                games.append({
+                    "date": g.get("officialDate", date_block.get("date", "")),
+                    "game_datetime": gdate,
+                    "venue": g.get("venue", {}).get("name", ""),
+                    "home_id": g.get("teams", {}).get("home", {}).get("team", {}).get("id"),
+                })
+        if not games:
+            return {}
+        # Most recent
+        games.sort(key=lambda x: x["date"], reverse=True)
+        last = games[0]
+        # Determine if it was a night game (first pitch after 5pm local ~ 21:00 UTC)
+        was_night = False
+        try:
+            from datetime import datetime as dt
+            gt = dt.fromisoformat(last["game_datetime"].replace("Z", "+00:00"))
+            was_night = gt.hour >= 22 or gt.hour <= 4  # rough UTC night
+        except Exception:
+            pass
+        last["was_night"] = was_night
+        return last
+
     def get_lineup(self, game_pk: int) -> dict:
         """
         Get confirmed lineups for a game.

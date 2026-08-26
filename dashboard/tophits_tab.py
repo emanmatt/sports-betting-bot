@@ -219,9 +219,20 @@ def render_tophits_tab(selected_sport: str):
 - **➖** = neutral
 - **🔴** = pitcher-friendly park (suppresses offense)
 
+**Platoon** (batter vs pitcher handedness — batters only)
+- **🟢** = favorable (opposite hands, or switch hitter) — batters hit better
+- **➖** = neutral / unknown
+- **🔴** = tough (same hand, especially lefty vs lefty)
+
+**Rest** (team rest & travel fatigue — batters only)
+- **🟢 Fresh** = well-rested, no tough travel — small boost
+- **➖** = normal rest
+- **🔴 Tired** = fatigue from travel, time zones, or day-after-night — tired lineups score less
+
 **Flags**
 - **⚠️ Questionable/Out** = injury concern
 - **⚡ Contract year** = added motivation (when data available)
+- **⚡ Owns him / ⚠️ Struggles** = batter-vs-pitcher history, shown only with 15+ career at-bats (small samples ignored as noise)
 
 **Score** = 0-100 composite: recent form (~40%) + opposing pitcher (20%) +
 park (10%) + batting order + weather + rest, minus penalties for cold streaks,
