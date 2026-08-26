@@ -181,6 +181,12 @@ class PropRanker:
         score += core_l10 * 0.40
         score += core_l15 * 0.15
 
+        # Under penalty: under lines are less available and worse-priced
+        # than overs, so hold them to a higher bar — they should only
+        # rank near the top when the signal is truly elite.
+        if pr.side == "under":
+            score -= 12
+
         # Recent form momentum
         if pr.recent_avg > pr.avg_value * 1.15:
             score += 8
@@ -301,9 +307,12 @@ class PropRanker:
         can_under = label in UNDER_ELIGIBLE
 
         # Pick the stronger side by L10 — but only allow UNDER on
-        # eligible props AND only when the under is genuinely strong
-        # (the over rate is low enough to be a real fade).
-        if can_under and pr.l10_under > pr.l10_rate and pr.l10_rate <= 40:
+        # eligible props AND only when the under is a genuinely STRONG,
+        # consistent fade. Bar is high because these under lines barely
+        # exist on books / carry heavy juice — only surface the elite ones:
+        #   - over rate must be very low (<= 20%, i.e. under hits 80%+)
+        #   - AND the L15 must confirm it (not just a 10-game blip)
+        if (can_under and pr.l10_rate <= 20 and pr.l15_rate <= 30):
             pr.side = "under"
         else:
             pr.side = "over"
