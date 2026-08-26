@@ -39,8 +39,9 @@ def _render_parlay_card(parlay, idx):
     legs_html = ""
     for leg in parlay.legs:
         p = round(leg.hit_prob * 100)
+        side_tag = "🔽 U" if getattr(leg, "side", "over") == "under" else "🔼 O"
         legs_html += (f"<div style='padding:4px 0'>"
-                     f"• <b>{leg.player_name}</b> {leg.prop_label} "
+                     f"• <b>{leg.player_name}</b> {side_tag} {leg.prop_label} "
                      f"<span style='color:#888'>({leg.team}) — {p}%</span></div>")
 
     st.markdown(

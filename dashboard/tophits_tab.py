@@ -196,6 +196,10 @@ def render_tophits_tab(selected_sport: str):
 **Status**
 - **Upcoming** = game hasn't started, bettable · **🔴 LIVE** = game in progress
 
+**Side** (which way to bet)
+- **🔼 OVER** = player likely to exceed the line (hot hitter, good matchup)
+- **🔽 UNDER** = player likely to stay under (cold hitter, tough matchup, ace pitcher). The L10/L15/Season shown are the UNDER hit rates when this is flagged.
+
 **Rate columns**
 - **L10** = % of last 10 games the player went over this prop line
 - **L15** = same over last 15 games (bigger sample = more stable)

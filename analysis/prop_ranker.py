@@ -65,6 +65,11 @@ class PropRank:
     l10_rate:      float = 0.0
     l15_rate:      float = 0.0
     season_rate:   float = 0.0
+    # Under rates (% of games UNDER the line)
+    l10_under:     float = 0.0
+    l15_under:     float = 0.0
+    season_under:  float = 0.0
+    side:          str = "over"    # whichever side is the stronger play
     games:         int = 0
     avg_value:     float = 0.0
     recent_avg:    float = 0.0
@@ -168,9 +173,13 @@ class PropRanker:
         Injury applies as a penalty/drop.
         """
         score = 0.0
-        # Recent form core (~40 pts from L10, 15 from L15)
-        score += pr.l10_rate * 0.40
-        score += pr.l15_rate * 0.15
+        # Recent form core — use whichever SIDE is stronger (over or under)
+        if pr.side == "under":
+            core_l10, core_l15 = pr.l10_under, pr.l15_under
+        else:
+            core_l10, core_l15 = pr.l10_rate, pr.l15_rate
+        score += core_l10 * 0.40
+        score += core_l15 * 0.15
 
         # Recent form momentum
         if pr.recent_avg > pr.avg_value * 1.15:
@@ -271,6 +280,12 @@ class PropRanker:
         pr.l10_rate = self._rate_over(values[:10], line)
         pr.l15_rate = self._rate_over(values[:15], line)
         pr.season_rate = self._rate_over(values, line)
+        # Under rates = 100 - over rate (games at or below the line)
+        pr.l10_under = 100 - pr.l10_rate
+        pr.l15_under = 100 - pr.l15_rate
+        pr.season_under = 100 - pr.season_rate
+        # Pick the stronger side by L10
+        pr.side = "over" if pr.l10_rate >= pr.l10_under else "under"
         pr.avg_value = round(sum(values) / len(values), 2)
         l5 = values[:5]
         pr.recent_avg = round(sum(l5) / len(l5), 2) if l5 else 0
@@ -495,11 +510,12 @@ class PropRanker:
                 "Game": p.game_matchup,
                 "Player": p.player_name,
                 "Prop": p.prop_label,
+                "Side": "🔽 UNDER" if p.side == "under" else "🔼 OVER",
                 "Type": "Pitcher" if p.is_pitcher else "Batter",
                 "Team": p.team,
-                "L10": f"{p.l10_rate:.0f}%",
-                "L15": f"{p.l15_rate:.0f}%",
-                "Season": f"{p.season_rate:.0f}%",
+                "L10": f"{(p.l10_under if p.side=='under' else p.l10_rate):.0f}%",
+                "L15": f"{(p.l15_under if p.side=='under' else p.l15_rate):.0f}%",
+                "Season": f"{(p.season_under if p.side=='under' else p.season_rate):.0f}%",
                 "Avg": p.avg_value,
                 "Trend": f"{trend_emoji}",
                 "vs": p.opp_pitcher or p.opponent or "-",

@@ -37,6 +37,7 @@ class ParlayLeg:
     tier:         str
     is_pitcher:   bool
     prop_stat:    str
+    side:         str = "over"   # over or under
 
 
 @dataclass
@@ -70,12 +71,17 @@ class ParlayBuilder:
 
     def _leg_prob(self, prop) -> float:
         """
-        Model probability for a leg = blend of L10 and L15 hit rates.
-        Slightly discounted toward the mean to avoid overconfidence
-        from small samples (regression to reality).
+        Model probability for a leg = blend of L10 and L15 hit rates
+        for whichever SIDE is stronger (over or under).
+        Regressed toward the mean to temper small-sample extremes.
         """
-        l10 = prop.l10_rate / 100.0
-        l15 = prop.l15_rate / 100.0
+        side = getattr(prop, "side", "over")
+        if side == "under":
+            l10 = getattr(prop, "l10_under", 100 - prop.l10_rate) / 100.0
+            l15 = getattr(prop, "l15_under", 100 - prop.l15_rate) / 100.0
+        else:
+            l10 = prop.l10_rate / 100.0
+            l15 = prop.l15_rate / 100.0
         raw = l10 * 0.6 + l15 * 0.4
         # Regress 15% toward 0.5 to temper extreme rates
         return round(raw * 0.85 + 0.5 * 0.15, 4)
@@ -153,6 +159,7 @@ class ParlayBuilder:
                 tier=p.tier,
                 is_pitcher=p.is_pitcher,
                 prop_stat=p.prop_stat,
+                side=getattr(p, "side", "over"),
             ))
 
         # Avoid duplicate player+different-prop in same parlay
