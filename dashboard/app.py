@@ -220,7 +220,7 @@ with st.sidebar:
 
 # ── Main tabs ─────────────────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14 = st.tabs([
     "📅 Today's Games",
     "🔥 Top Props",
     "⭐ Best Props",
@@ -234,6 +234,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13
     "📊 Track Record",
     "🎰 Parlays",
     "💎 Value",
+    "🧮 Calc & Demons",
 ])
 
 
@@ -600,3 +601,14 @@ with tab13:
         render_value_tab(selected_sport)
     except Exception as e:
         st.error(f"Value tab error: {e}")
+
+
+# ════════════════════════════════════════════════════════
+# TAB 14: PARLAY CALCULATOR + DEMON SLIPS
+# ════════════════════════════════════════════════════════
+with tab14:
+    try:
+        from dashboard.parlay_calc_tab import render_parlay_calc_tab
+        render_parlay_calc_tab()
+    except Exception as e:
+        st.error(f"Calculator/Demons error: {e}")
