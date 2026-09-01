@@ -126,28 +126,47 @@ def render_value_tab(selected_sport: str):
                         model_prob = (_model_prob_for_line(model_p, std.line)
                                      if model_p else None)
 
-                        # Edge on the OVER side (most common bet)
-                        edge_info = {}
-                        if model_prob is not None and std.over_odds is not None:
-                            edge_info = compute_edge(model_prob, std.over_odds)
+                        # Compute edge on BOTH sides and pick the better one.
+                        # Over model prob = model_prob; Under = 1 - model_prob.
+                        over_edge, under_edge = {}, {}
+                        if model_prob is not None:
+                            if std.over_odds is not None:
+                                over_edge = compute_edge(model_prob, std.over_odds)
+                            if std.under_odds is not None:
+                                under_edge = compute_edge(1 - model_prob, std.under_odds)
+
+                        # Decide which side to bet (higher positive edge wins)
+                        o_e = over_edge.get("edge_pct", -999)
+                        u_e = under_edge.get("edge_pct", -999)
+                        if max(o_e, u_e) < 3:
+                            bet_side = "🚫 Pass"
+                            best = over_edge if o_e >= u_e else under_edge
+                            best_edge_val = max(o_e, u_e)
+                        elif o_e >= u_e:
+                            bet_side = "🔼 OVER"
+                            best = over_edge
+                            best_edge_val = o_e
+                        else:
+                            bet_side = "🔽 UNDER"
+                            best = under_edge
+                            best_edge_val = u_e
 
                         rows.append({
                             "Player": player,
                             "Prop": player_lines.label,
                             "Line": std.line,
+                            "Bet": bet_side,
                             "Over": std.over_odds,
                             "Under": std.under_odds,
                             "Book": std.book,
                             "PrizePicks": player_lines.prizepicks or "—",
                             "Model %": f"{model_prob*100:.0f}%" if model_prob else "—",
-                            "Implied %": (f"{edge_info['implied']*100:.0f}%"
-                                         if edge_info.get("implied") else "—"),
-                            "Edge": (f"{edge_info['edge_pct']:+.1f}%"
-                                    if edge_info.get("edge_pct") is not None else "—"),
-                            "EV/$100": (f"${edge_info['ev_per_100']:+.0f}"
-                                       if edge_info.get("ev_per_100") is not None else "—"),
-                            "Verdict": edge_info.get("verdict", "—"),
-                            "_edge_sort": edge_info.get("edge_pct", -999),
+                            "Edge": (f"{best_edge_val:+.1f}%"
+                                    if best_edge_val > -900 else "—"),
+                            "EV/$100": (f"${best['ev_per_100']:+.0f}"
+                                       if best.get("ev_per_100") is not None else "—"),
+                            "Verdict": best.get("verdict", "—"),
+                            "_edge_sort": best_edge_val,
                         })
                         if player_lines.alternates:
                             ladders[f"{player} — {player_lines.label}"] = \
@@ -183,11 +202,13 @@ def render_value_tab(selected_sport: str):
         st.markdown("### 📊 Lines Ranked by Edge (best value first)")
         st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
-        st.info("**Edge** = your model's probability minus the book's implied "
-               "probability. 🟢 positive = you're getting a better price than the "
-               "risk deserves (the real bet). ➖ fair = book priced it right, no "
-               "money in it. 🔴 = book disagrees with your model. **EV/$100** is "
-               "expected profit per $100 staked if your model is accurate.")
+        st.info("**Bet** = which side to actually play (🔼 OVER / 🔽 UNDER / 🚫 Pass). "
+               "**Edge** = your model's probability minus the book's implied "
+               "probability, for that side. 🟢 positive = you're getting a better "
+               "price than the risk deserves (the real bet). ➖ fair = book priced "
+               "it right, no money in it. **EV/$100** = expected profit per $100 "
+               "staked if your model is accurate. 🚫 Pass means neither side has "
+               "enough edge (under +3%) to be worth it.")
 
         # Alt ladders
         if ladders:
