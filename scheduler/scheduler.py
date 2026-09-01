@@ -35,6 +35,7 @@ def job_update_schedule():
 
 def job_update_odds():
     """Update live odds. Runs every 30 min."""
+    return  # [DISABLED to save OddsAPI credits - fetch props manually in Value tab]
     from data_ingestion.official.odds_client import OddsClient
     logger.info("[Scheduler] ⚡ Updating odds...")
     client = OddsClient()
@@ -66,6 +67,7 @@ def job_update_props():
     Fetch player props and save edges to database.
     Runs every 2 hours. Fully automatic — no manual run needed.
     """
+    return  # [DISABLED to save OddsAPI credits - fetch props manually in Value tab]
     logger.info("[Scheduler] 🎯 Running props analysis...")
     try:
         from data_ingestion.official.props_engine import PropsEngine
