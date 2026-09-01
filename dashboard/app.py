@@ -220,7 +220,7 @@ with st.sidebar:
 
 # ── Main tabs ─────────────────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs([
     "📅 Today's Games",
     "🔥 Top Props",
     "⭐ Best Props",
@@ -233,6 +233,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.t
     "🤖 Claude",
     "📊 Track Record",
     "🎰 Parlays",
+    "💎 Value",
 ])
 
 
@@ -588,3 +589,14 @@ with tab12:
         render_parlay_tab()
     except Exception as e:
         st.error(f"Parlay Builder error: {e}")
+
+
+# ════════════════════════════════════════════════════════
+# TAB 13: VALUE (real lines + edge)
+# ════════════════════════════════════════════════════════
+with tab13:
+    try:
+        from dashboard.value_tab import render_value_tab
+        render_value_tab(selected_sport)
+    except Exception as e:
+        st.error(f"Value tab error: {e}")
