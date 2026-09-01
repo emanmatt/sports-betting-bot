@@ -238,6 +238,14 @@ class PropRanker:
         elif pr.injury_flag == "Out":
             score -= 100   # effectively drops it
 
+        # Apply auto-calibration multiplier (learned from track record).
+        # Muted by sample size + capped ±15%, so it nudges, never dominates.
+        calib = getattr(self, '_calibration', None)
+        if calib is not None:
+            m = calib.prop_multiplier(pr.prop_label)
+            m *= calib.tier_multiplier(pr.tier)
+            score *= m  # calibration multiplier
+
         return max(0, min(100, round(score, 1)))
 
     def _tier(self, score: float) -> str:
@@ -352,6 +360,13 @@ class PropRanker:
             teamq = TeamQualityEngine()
         except Exception:
             teamq = None
+        # Auto-calibration from track record (learns from past results)
+        try:
+            from analysis.auto_calibration import AutoCalibration
+            self._calibration = AutoCalibration().load()
+        except Exception:
+            self._calibration = None
+
         try:
             from analysis.bvp_matchup import BvPMatchup
             bvp = BvPMatchup()
