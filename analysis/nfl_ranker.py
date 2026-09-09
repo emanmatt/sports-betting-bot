@@ -71,10 +71,67 @@ class NFLPropRank:
     # Matchup
     def_rank_note: str = ""
     def_adj:      float = 0.0
+    injury_flag:  str = ""
+    injury_adj:   float = 0.0
     # Score
     score:        float = 0.0
     tier:         str = "pass"
     game_status:  str = "upcoming"
+
+    # --- Compatibility shims so NFL props work in the shared tools
+    #     (Value edge, parlay calculator, demon slips) which were built
+    #     around the MLB PropRank attribute names. ---
+    @property
+    def l10_rate(self):
+        return self.hit_rate
+
+    @property
+    def l15_rate(self):
+        return self.hit_rate
+
+    @property
+    def l10_under(self):
+        return 100 - self.hit_rate
+
+    @property
+    def l15_under(self):
+        return 100 - self.hit_rate
+
+    @property
+    def side(self):
+        return "over"
+
+    @property
+    def is_pitcher(self):
+        return False
+
+    @property
+    def contract_flag(self):
+        return ""
+
+    @property
+    def park_adj(self):
+        return 0.0
+
+    @property
+    def pitcher_adj(self):
+        return 0.0
+
+    @property
+    def team_adj(self):
+        return self.def_adj
+
+    @property
+    def weather_boost(self):
+        return False
+
+    @property
+    def batting_order(self):
+        return None
+
+    @property
+    def platoon_adj(self):
+        return 0.0
 
 
 # Map ESPN gamelog labels to our stat keys, per gamelog type
@@ -135,6 +192,11 @@ class NFLRanker:
     def __init__(self):
         from data_ingestion.official.nfl_client import NFLClient
         self.nfl = NFLClient()
+        try:
+            from analysis.nfl_inactives import NFLInactives
+            self.inactives = NFLInactives()
+        except Exception:
+            self.inactives = None
 
     def _rate_over(self, values, line):
         if not values:
@@ -177,6 +239,14 @@ class NFLRanker:
         else:  # WR, TE
             props = WR_TE_PROPS
 
+        # Injury status (if the inactives cache has this player)
+        inj_adj, inj_flag = 0.0, ""
+        if self.inactives:
+            try:
+                inj_adj, inj_flag = self.inactives.adjustment(name)
+            except Exception:
+                pass
+
         results = []
         for stat_key, line, label in props:
             vals = self._stat_values(log, stat_key, is_qb)
@@ -197,6 +267,7 @@ class NFLRanker:
                 hit_rate=rate, avg_value=avg, games=len(vals),
                 data_season=log.season, low_confidence=low_conf,
                 game_status=game_status,
+                injury_flag=inj_flag, injury_adj=inj_adj,
             )
             pr.score = self._score(pr)
             pr.tier = self._tier(pr.score)
@@ -204,15 +275,15 @@ class NFLRanker:
         return results
 
     def _score(self, pr) -> float:
-        """Score 0-100. Prior-year-based early; penalize thin data."""
+        """Score 0-100. Prior-year-based early; penalize thin data + injuries."""
         score = pr.hit_rate  # base is the hit rate itself
-        # Defense matchup adjustment (added later when wired)
+        # Defense matchup adjustment (added Week 3-4 when real 2026 data exists)
         score += pr.def_adj
+        # Injury status: Out/Doubtful effectively drop; Questionable dings
+        score += pr.injury_adj
         # Thin-data penalty — don't trust a 2-3 game sample
         if pr.low_confidence:
             score -= 15
-        # Prior-year data is less certain than current — mild haircut
-        # (only matters once current-season exists to compare)
         return max(0, min(100, round(score, 1)))
 
     def _tier(self, score):
@@ -239,6 +310,11 @@ class NFLRanker:
                 (g.home_team_id, g.home_team, g.away_team),
                 (g.away_team_id, g.away_team, g.home_team),
             ]:
+                if self.inactives:
+                    try:
+                        self.inactives.load_team(team_id)
+                    except Exception:
+                        pass
                 roster = self.nfl.get_team_roster(team_id)
                 for player in roster:
                     props = self.rank_player(player, team_name, opp_name,
@@ -261,6 +337,7 @@ class NFLRanker:
                 "Avg": p.avg_value,
                 "Games": p.games,
                 "Data": f"{p.data_season}" + (" ⚠️thin" if p.low_confidence else ""),
+                "Status": p.injury_flag or "✓",
                 "vs": p.opponent,
                 "Score": p.score,
             })

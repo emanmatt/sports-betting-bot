@@ -43,8 +43,13 @@ class DemonPlay:
 
 # Rare/ceiling props that make good "demon" targets (big payout when they hit)
 DEMON_PROPS = {
+    # MLB
     "Home Run", "2+ Hits", "3+ Total Bases", "3+ H+R+RBI",
     "Hitter Fantasy 10+", "2+ RBI", "6+ Strikeouts", "Pitcher Fantasy 15+",
+    # NFL ceiling props
+    "274.5+ Pass Yards", "2+ Pass TDs", "74.5+ Rush Yards",
+    "69.5+ Rec Yards", "6+ Receptions", "Anytime TD (rec)",
+    "15+ Rush Yards (QB)",
 }
 
 

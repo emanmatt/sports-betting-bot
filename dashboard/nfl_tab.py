@@ -92,6 +92,8 @@ def _rank_and_show(ranker, games):
             (g.away_team_id, g.away_team, g.home_team),
         ]:
             try:
+                if ranker.inactives:
+                    ranker.inactives.load_team(team_id)
                 roster = ranker.nfl.get_team_roster(team_id)
                 for player in roster:
                     all_props.extend(

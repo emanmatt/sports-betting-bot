@@ -23,10 +23,23 @@ import pandas as pd
 def render_parlay_calc_tab():
     st.subheader("🧮 Parlay Calculator & 😈 Demon Slips")
 
-    props = st.session_state.get("prop_ranks", [])
-    if not props:
-        st.info("Rank a board in **🔥 Top Props** first, then use these tools.")
+    # Sport picker — read whichever board is loaded
+    mlb_props = st.session_state.get("prop_ranks", [])
+    nfl_props = st.session_state.get("nfl_prop_ranks", [])
+
+    options = []
+    if mlb_props:
+        options.append("⚾ MLB")
+    if nfl_props:
+        options.append("🏈 NFL")
+
+    if not options:
+        st.info("Rank a board first — **🔥 Top Props** (MLB) or **🏈 NFL Props** "
+               "— then use these tools.")
         return
+
+    sport = st.radio("Sport", options, horizontal=True) if len(options) > 1 else options[0]
+    props = nfl_props if sport == "🏈 NFL" else mlb_props
 
     tool = st.radio("Tool", ["🧮 Stake → Return Calculator", "😈 Demon Slips"],
                    horizontal=True)
