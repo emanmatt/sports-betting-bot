@@ -145,10 +145,15 @@ def render_tophits_tab(selected_sport: str):
                 projected = sum(1 for l in lineups_data
                                if l.get("projected") and not l["confirmed"])
                 if projected:
-                    st.info(f"ℹ️ {projected} game(s) don't have official lineups "
-                           "posted yet — showing projected batters from the active "
-                           "roster. Re-run once lineups drop (1-3 hrs before game) "
-                           "for confirmed batting orders.")
+                    if st.session_state.get("confirmed_only_toggle", True):
+                        st.info(f"ℹ️ {projected} game(s) have no confirmed lineup "
+                               "yet. Confirmed-only mode is ON, so those players are "
+                               "hidden until lineups post (1-3 hrs before game). "
+                               "Re-run then for a bettable board.")
+                    else:
+                        st.info(f"ℹ️ {projected} game(s) have no official lineup "
+                               "yet — showing PROJECTED batters (not yet bettable). "
+                               "Re-run once lineups drop for confirmed batting orders.")
                 if upcoming == 0 and live == 0:
                     st.warning("⚠️ No upcoming or live games right now — all of "
                               "today's games may be finished. Check back before "
@@ -169,8 +174,8 @@ def render_tophits_tab(selected_sport: str):
           1+ RBI, Home Run, 1+ Runs
         - **Pitchers:** 5+ / 6+ / 7+ Strikeouts
 
-        **Score (0-100):** L10 rate (45%) + L15 rate (20%) + recent form +
-        weather + batting order. Tiers: A (70+), B (55+), C (40+), pass (<40).
+        **Score (0-100):** Driven mainly by recent form (L10 + L15 hit rate);
+        matchup, park, weather, platoon show as context columns. Tiers: A (70+), B (55+), C (40+), pass (<40).
         """)
         return
 
