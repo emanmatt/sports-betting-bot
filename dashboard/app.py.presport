@@ -282,21 +282,10 @@ with tab1:
 # ════════════════════════════════════════════════════════
 with tab2:
     try:
-        if selected_sport == "NFL":
-            from dashboard.nfl_tab import render_nfl_tab
-            render_nfl_tab()
-        elif selected_sport == "NBA":
-            st.subheader("🏀 NBA Props")
-            st.info("🏀 The 2026-27 NBA season starts **October 20, 2026**. "
-                    "Full NBA prop analysis — the same ranking, value, parlay and "
-                    "learning tools as MLB — will be live once games begin and "
-                    "real data is available. Building it now would only produce "
-                    "guesses; it'll be grounded in actual games at tip-off.")
-        else:
-            from dashboard.tophits_tab import render_tophits_tab
-            render_tophits_tab(selected_sport)
+        from dashboard.tophits_tab import render_tophits_tab
+        render_tophits_tab(selected_sport)
     except Exception as e:
-        st.error(f"Top Props error: {e}")
+        st.error(f"Top Hits error: {e}")
 
 
 # ════════════════════════════════════════════════════════

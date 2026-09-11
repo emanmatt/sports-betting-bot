@@ -51,7 +51,7 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 #    git commit -m "Enable [sport]"
 #    git push
 # ═══════════════════════════════════════════════════════════════════
-SUPPORTED_SPORTS = ["MLB", "NFL", "NBA"]
+SUPPORTED_SPORTS = ["MLB"]
 
 # All sports the bot CAN handle (don't edit — used for config lookups)
 ALL_SPORTS = ["NBA", "NFL", "MLB", "NHL"]
