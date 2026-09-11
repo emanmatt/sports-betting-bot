@@ -227,7 +227,7 @@ class NFLRanker:
         if not pid:
             return []
 
-        log = self.nfl.get_blended_log(pid)
+        log = self.nfl.get_player_stats_with_fallback(pid)
         if not log.games:
             return []   # no data at all — skip
 

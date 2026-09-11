@@ -182,31 +182,3 @@ class NFLClient:
             return current
         prior = self.get_player_gamelog(player_id, PRIOR_SEASON)
         return prior
-
-
-    def get_blended_log(self, player_id: str) -> NFLPlayerLog:
-        """
-        Auto-freshening data: combine current-season (2026) games with
-        prior-season (2025) games so the model shifts toward current form
-        as the season progresses — automatically.
-
-        - 0 current games (Week 1): 100% prior year
-        - a few current games: current games FIRST (most recent), then
-          prior-year games fill the sample so we still have enough data
-        The ranker sorts by recency, so current-season games dominate the
-        L-game window as they accumulate.
-        """
-        current = self.get_player_gamelog(player_id, CURRENT_SEASON)
-        prior = self.get_player_gamelog(player_id, PRIOR_SEASON)
-
-        # Current games first (they're the freshest signal), then prior
-        combined_games = list(current.games) + list(prior.games)
-
-        season_tag = CURRENT_SEASON if current.games else PRIOR_SEASON
-        name = current.player_name or prior.player_name
-        pos = current.position or prior.position
-
-        return NFLPlayerLog(
-            player_name=name, player_id=player_id, position=pos,
-            team="", season=season_tag, games=combined_games,
-        )
