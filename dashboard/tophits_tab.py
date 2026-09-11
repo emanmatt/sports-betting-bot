@@ -254,7 +254,7 @@ thin samples, and injuries.
         """)
 
     # Filters
-    f1, f2, f3 = st.columns(3)
+    f1, f2, f3, f4 = st.columns(4)
     with f1:
         type_filter = st.selectbox("Type", ["All", "Batter", "Pitcher"])
     with f2:
@@ -262,6 +262,9 @@ thin samples, and injuries.
         prop_filter = st.selectbox("Prop", ["All"] + prop_types)
     with f3:
         min_tier = st.selectbox("Min Tier", ["All", "A", "B", "C"])
+    with f4:
+        teams_list = sorted(set(r["Team"] for r in rows if r.get("Team")))
+        team_filter = st.selectbox("Team", ["All Teams"] + teams_list)
 
     filtered = rows
     if game_filter != "All Games":
@@ -270,6 +273,8 @@ thin samples, and injuries.
         filtered = [r for r in filtered if r["Type"] == type_filter]
     if prop_filter != "All":
         filtered = [r for r in filtered if r["Prop"] == prop_filter]
+    if team_filter != "All Teams":
+        filtered = [r for r in filtered if r.get("Team") == team_filter]
     if min_tier != "All":
         tier_order = {"A": 3, "B": 2, "C": 1, "pass": 0}
         min_val = tier_order[min_tier]
