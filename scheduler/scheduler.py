@@ -174,11 +174,19 @@ def job_grade_predictions():
         tr = TrackRecord()
         try:
             graded = tr.grade_pending()
-            logger.info(f"[Scheduler] Graded {graded} predictions.")
+            logger.info(f"[Scheduler] Graded {graded} MLB predictions.")
         finally:
             tr.close()
     except Exception as e:
-        logger.error(f"[Scheduler] Prediction grading failed: {e}")
+        logger.error(f"[Scheduler] MLB grading failed: {e}")
+
+    # NFL grading (own grader — pulls Week N results from ESPN)
+    try:
+        from analysis.nfl_grader import NFLGrader
+        n = NFLGrader().grade_pending()
+        logger.info(f"[Scheduler] Graded {n} NFL predictions.")
+    except Exception as e:
+        logger.error(f"[Scheduler] NFL grading failed: {e}")
 
 
 def job_update_gamelogs():

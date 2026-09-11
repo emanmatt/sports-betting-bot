@@ -123,6 +123,17 @@ def _rank_and_show(ranker, games):
     except Exception:
         pass
 
+    # Auto-grade past pending NFL predictions against real results
+    # (runs itself each time you rank — no manual command needed).
+    try:
+        from analysis.nfl_grader import NFLGrader
+        graded = NFLGrader().grade_pending()
+        if graded:
+            st.caption(f"📊 Learning loop: auto-graded {graded} past "
+                       "NFL prediction(s) against results.")
+    except Exception:
+        pass
+
     rows = ranker.to_table_rows(all_props, limit=100)
     st.success(f"Ranked {len(all_props)} NFL props.")
 
