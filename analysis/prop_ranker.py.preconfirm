@@ -341,7 +341,7 @@ class PropRanker:
         return pr
 
     def rank_all_props(self, lineups_data: list,
-                       weather_by_venue: dict = None, confirmed_only: bool = False) -> list[PropRank]:
+                       weather_by_venue: dict = None) -> list[PropRank]:
         """
         Rank EVERY prop type across all confirmed lineups + pitchers.
         """
@@ -382,11 +382,6 @@ class PropRanker:
             rest_mlb = None
 
         for game in lineups_data:
-            # Confirmed-lineup enforcement (audit fix): skip games
-            # whose official lineup isn't posted, so projected/
-            # benched players never reach the bettable board.
-            if confirmed_only and not game.get("confirmed", False):
-                continue
             venue = game.get("venue", "")
             game_status = game.get("status", "upcoming")
             game_matchup = game.get("game", "")

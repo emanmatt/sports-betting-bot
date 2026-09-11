@@ -41,11 +41,6 @@ def render_tophits_tab(selected_sport: str):
     with col1:
         st.markdown("Pulls today's confirmed lineups + probable pitchers and "
                     "ranks every prop type by hit likelihood.")
-
-    confirmed_only = st.checkbox(
-        "✅ Confirmed lineups only (recommended — audit showed "
-        "betting projected players costs ~5-7% hit rate)",
-        value=True, key="confirmed_only_toggle")
     with col2:
         run = st.button("🔥 Rank All Props", type="primary",
                        use_container_width=True)
@@ -101,7 +96,7 @@ def render_tophits_tab(selected_sport: str):
                 progress.empty()
 
                 ranker = PropRanker()
-                props = ranker.rank_all_props(lineups_data, weather_by_venue, confirmed_only=st.session_state.get('confirmed_only_toggle', True))
+                props = ranker.rank_all_props(lineups_data, weather_by_venue)
                 rows = ranker.to_table_rows(props, limit=80)
                 ranker.close()
 
