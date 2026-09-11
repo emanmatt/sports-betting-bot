@@ -71,7 +71,7 @@ class TrackRecord:
     def close(self):
         self.db.close()
 
-    def log_predictions(self, props: list, top_n: int = 20) -> int:
+    def log_predictions(self, props: list, top_n: int = 20, sport: str = "MLB") -> int:
         """
         Save the top N ranked props as predictions for today.
         Avoids duplicates (same player+prop+date).
@@ -95,16 +95,16 @@ class TrackRecord:
                     INSERT INTO predictions
                     (pred_date, player_name, prop_stat, prop_label, prop_line,
                      is_pitcher, team, opponent, game_matchup, tier, score,
-                     l10_rate, predicted_side)
+                     l10_rate, predicted_side, sport)
                     VALUES
                     (:d, :pn, :ps, :pl, :line, :isp, :team, :opp, :gm, :tier,
-                     :score, :l10, :side)
+                     :score, :l10, :side, :sport)
                 """), {
                     "d": today, "pn": p.player_name, "ps": p.prop_stat,
                     "pl": p.prop_label, "line": p.prop_line,
                     "isp": p.is_pitcher, "team": p.team, "opp": p.opponent,
                     "gm": p.game_matchup, "tier": p.tier, "score": p.score,
-                    "l10": p.l10_rate, "side": "over",
+                    "l10": p.l10_rate, "side": "over", "sport": sport,
                 })
                 saved += 1
             conn.commit()
@@ -242,14 +242,15 @@ class TrackRecord:
         except Exception:
             return 0
 
-    def get_stats(self) -> dict:
+    def get_stats(self, sport: str = None) -> dict:
         """Compute overall + breakdown accuracy stats."""
         engine = get_engine()
         with engine.connect() as conn:
-            graded = conn.execute(text("""
-                SELECT tier, prop_label, is_pitcher, result, score, l10_rate
-                FROM predictions WHERE graded = TRUE
-            """)).fetchall()
+            _sf = f" AND sport = '{sport}'" if sport else ""
+            graded = conn.execute(text(
+                "SELECT tier, prop_label, is_pitcher, result, score, l10_rate "
+                "FROM predictions WHERE graded = TRUE" + _sf
+            )).fetchall()
 
         if not graded:
             return {"total": 0}
