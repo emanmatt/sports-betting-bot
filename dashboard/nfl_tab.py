@@ -113,6 +113,16 @@ def _rank_and_show(ranker, games):
     # Store for the parlay/value tools to reuse (same shape they expect)
     st.session_state["nfl_prop_ranks"] = all_props
 
+    # Log NFL predictions to the track record (sport-tagged) so
+    # they accumulate for grading + the learning loop, same as MLB.
+    try:
+        from analysis.track_record import TrackRecord
+        tr = TrackRecord()
+        tr.log_predictions(all_props, top_n=20, sport="NFL")
+        tr.close()
+    except Exception:
+        pass
+
     rows = ranker.to_table_rows(all_props, limit=100)
     st.success(f"Ranked {len(all_props)} NFL props.")
 
