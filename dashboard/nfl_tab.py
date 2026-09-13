@@ -153,6 +153,26 @@ def _rank_and_show(ranker, games):
         df["Hit % (num)"] = df["Hit %"].str.replace("%", "").astype(float)
     st.dataframe(df, hide_index=True, use_container_width=True, height=500)
 
+    # ── 🧠 Deep Analysis (Claude reasoning on a play) ──
+    st.divider()
+    st.markdown("### 🧠 Deep Analysis")
+    st.caption("Claude builds a situational case for a play — role, matchup, "
+               "injuries, game script + a live news search. Uses Anthropic "
+               "credits (not OddsAPI). Pick a play and run it.")
+    if all_props:
+        top = all_props[:15]
+        labels = [f"{p.player_name} — {p.prop_label} ({p.team})" for p in top]
+        pick = st.selectbox("Pick a play to analyze", labels, key="nfl_deep_pick")
+        if st.button("🧠 Analyze This Play", key="nfl_deep_btn"):
+            chosen = top[labels.index(pick)]
+            with st.spinner("Claude analyzing (searching news + building case)..."):
+                try:
+                    from analysis.nfl_deep_analysis import analyze_play
+                    writeup = analyze_play(chosen, sport="NFL")
+                    st.markdown(writeup)
+                except Exception as e:
+                    st.error(f"Deep analysis failed: {e}")
+
     st.info("**Data** column shows which season each number came from. In "
            "Week 1 that's 2025 (last year) — projections, not current form. "
            "⚠️ thin = small sample (rookie/backup), treated cautiously. "
