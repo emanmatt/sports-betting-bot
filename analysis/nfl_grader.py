@@ -43,24 +43,37 @@ class NFLGrader:
             logger.debug(f"[NFLGrader] {e}")
             return None
 
+    def _build_roster_map(self):
+        """
+        Build {player_name.lower(): id} from ALL teams' rosters.
+        The ESPN athlete-search endpoint 400s, so we use the roster path
+        (same reliable source the ranker uses) to resolve player IDs.
+        Cached after first build.
+        """
+        if self._player_id_cache:
+            return
+        try:
+            from data_ingestion.official.nfl_client import NFLClient
+            nfl = NFLClient()
+            games = nfl.get_todays_games()
+            team_ids = set()
+            for g in games:
+                if g.home_team_id:
+                    team_ids.add(g.home_team_id)
+                if g.away_team_id:
+                    team_ids.add(g.away_team_id)
+            for tid in team_ids:
+                for p in nfl.get_team_roster(tid):
+                    nm = (p.get("name") or "").lower()
+                    if nm and p.get("id"):
+                        self._player_id_cache[nm] = p["id"]
+        except Exception as e:
+            logger.debug(f"[NFLGrader] roster map build failed: {e}")
+
     def _find_player_id(self, name):
-        """Search ESPN for a player's ID by name."""
-        if name in self._player_id_cache:
-            return self._player_id_cache[name]
-        data = self._get("https://site.web.api.espn.com/apis/common/v3/"
-                        "sports/football/nfl/athletes",
-                        params={"search": name, "limit": 5})
-        pid = None
-        if data:
-            items = data.get("items", []) or data.get("athletes", [])
-            for it in items:
-                if it.get("displayName", "").lower() == name.lower():
-                    pid = it.get("id")
-                    break
-            if not pid and items:
-                pid = items[0].get("id")
-        self._player_id_cache[name] = pid
-        return pid
+        """Resolve a player's ESPN ID via the roster map (search endpoint is broken)."""
+        self._build_roster_map()
+        return self._player_id_cache.get((name or "").lower())
 
     def _get_week_stat(self, player_name, prop_stat, pred_date):
         """
