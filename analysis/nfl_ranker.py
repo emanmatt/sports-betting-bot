@@ -137,29 +137,42 @@ class NFLPropRank:
 # Map ESPN gamelog labels to our stat keys, per gamelog type
 # Receiving/rushing gamelog order: REC, TGTS, YDS, AVG, TD, LNG, CAR, YDS
 def _parse_skill_game(row_labels, row_stats) -> dict:
-    """Parse one skill-player game row into named stats."""
+    """
+    Parse one skill-player game row into named stats.
+
+    ESPN skill gamelog order (RB):
+      CAR, YDS(rush), AVG, TD(rush), LNG, REC, TGTS, YDS(rec), AVG, TD(rec), ...
+    So YDS/TD BEFORE the REC marker are rushing; AFTER REC are receiving.
+    (Fixes the bug where RB rushing yards were mislabeled as receiving,
+    producing fake 100% hit rates on receiving-yard props.)
+    """
     d = {}
-    # Build label->value with position handling for duplicate YDS
-    yds_seen = 0
+    seen_rec = False
     for lab, val in zip(row_labels, row_stats):
         try:
             v = float(val)
         except (ValueError, TypeError):
+            # non-numeric (e.g. "-") — but still track the REC marker
+            if lab == "REC":
+                seen_rec = True
             continue
-        if lab == "REC":
+        if lab == "CAR":
+            d["rush_att"] = v
+        elif lab == "REC":
             d["receptions"] = v
+            seen_rec = True
         elif lab == "TGTS":
             d["targets"] = v
         elif lab == "YDS":
-            if yds_seen == 0:
-                d["rec_yards"] = v      # first YDS = receiving
-                yds_seen += 1
+            if not seen_rec:
+                d["rush_yards"] = v     # YDS before REC = rushing
             else:
-                d["rush_yards"] = v     # second YDS = rushing
+                d["rec_yards"] = v      # YDS after REC = receiving
         elif lab == "TD":
-            d["rec_tds"] = v            # (approx; TD column)
-        elif lab == "CAR":
-            d["rush_att"] = v
+            if not seen_rec:
+                d["rush_tds"] = v       # TD before REC = rushing
+            else:
+                d["rec_tds"] = v        # TD after REC = receiving
     return d
 
 
