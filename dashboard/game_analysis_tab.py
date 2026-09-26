@@ -55,17 +55,23 @@ def render_game_analysis_tab():
     st.markdown(f"**{len(upcoming)} games this week.** "
                 "Analyze one game (seconds) or the whole slate (~a minute or two).")
     pick = st.selectbox("Pick a game", list(game_by_matchup.keys()))
-    c1, c2, c3 = st.columns([1, 1, 1])
+    c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
     with c1:
         run_one = st.button("⚡ Analyze This Game", type="primary")
     with c2:
-        run_all = st.button("🧠 Analyze All")
+        run_td = st.button("🎯 TD Tracker")
     with c3:
+        run_all = st.button("🧠 Analyze All")
+    with c4:
         if st.button("🗑️ Clear results"):
             st.session_state.pop("game_analyses", None)
+            st.session_state.pop("td_boards", None)
             st.rerun()
+    st.caption("Tip: run **Analyze This Game** first, then **TD Tracker** — the "
+               "TD board folds in the model's volume data for grounded goal-line reads.")
 
     results = st.session_state.setdefault("game_analyses", {})
+    td_boards = st.session_state.setdefault("td_boards", {})
 
     if run_one:
         from analysis.game_analysis import analyze_nfl_game
@@ -96,6 +102,19 @@ def render_game_analysis_tab():
         st.session_state["game_analyses"] = results
         st.rerun()
 
+    if run_td:
+        from analysis.td_tracker import project_touchdowns
+        g = game_by_matchup[pick]
+        existing = results.get(pick, {})
+        with st.spinner(f"Projecting touchdowns for {pick}…"):
+            try:
+                td_boards[pick] = project_touchdowns(g, existing.get("edge_plays"))
+            except Exception as e:
+                td_boards[pick] = {"matchup": pick,
+                                   "board": f"TD projection failed: {e}"}
+        st.session_state["td_boards"] = td_boards
+        st.rerun()
+
     # ---- Saved store (DB) ----
     store_ok = True
     try:
@@ -114,6 +133,11 @@ def render_game_analysis_tab():
             with st.expander(f"🏈 {matchup}", expanded=(len(results) == 1)):
                 st.markdown(data["writeup"])
                 _edge_caption(data.get("edge_plays"))
+                tb = td_boards.get(matchup)
+                if tb:
+                    st.markdown("---")
+                    st.markdown("#### 🎯 TD Board")
+                    st.markdown(tb["board"])
                 if store_ok and not failed:
                     if st.button("💾 Save", key=f"save_{matchup}"):
                         try:
@@ -122,6 +146,15 @@ def render_game_analysis_tab():
                             st.success("Saved — rate it in the section below.")
                         except Exception as e:
                             st.error(f"Save failed: {e}")
+
+    # ---- Standalone TD boards (matchup not analyzed this session) ----
+    standalone_td = {m: b for m, b in td_boards.items() if m not in results}
+    if standalone_td:
+        st.divider()
+        st.markdown("### 🎯 TD Boards")
+        for m, b in standalone_td.items():
+            with st.expander(f"🎯 {m}", expanded=(len(standalone_td) == 1)):
+                st.markdown(b["board"])
 
     # ---- Saved & rated (from DB) ----
     if store_ok:
