@@ -543,7 +543,14 @@ class ParlayCandidate(Base):
 # ══════════════════════════════════════════════════════════════════════
 
 def get_engine():
-    return create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+    _url = DATABASE_URL
+    if _url.startswith("postgresql+psycopg2://"):
+        _url = _url.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
+    elif _url.startswith("postgresql://"):
+        _url = _url.replace("postgresql://", "postgresql+psycopg://", 1)
+    elif _url.startswith("postgres://"):
+        _url = _url.replace("postgres://", "postgresql+psycopg://", 1)
+    return create_engine(_url, echo=False, pool_pre_ping=True)
 
 def get_session():
     engine = get_engine()
