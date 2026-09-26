@@ -33,7 +33,6 @@ QB_PROPS = [
     ("pass_yards", 224.5, "224.5+ Pass Yards"),
     ("pass_yards", 274.5, "274.5+ Pass Yards"),
     ("pass_tds", 1.5, "2+ Pass TDs"),
-    ("completions", 21.5, "22+ Completions"),
     ("rush_yards", 14.5, "15+ Rush Yards (QB)"),
 ]
 RB_PROPS = [
@@ -41,13 +40,11 @@ RB_PROPS = [
     ("rush_yards", 74.5, "74.5+ Rush Yards"),
     ("rush_att", 13.5, "14+ Carries"),
     ("rec_yards", 19.5, "19.5+ Rec Yards (RB)"),
-    ("receptions", 2.5, "3+ Receptions (RB)"),
 ]
 WR_TE_PROPS = [
     ("rec_yards", 49.5, "49.5+ Rec Yards"),
     ("rec_yards", 69.5, "69.5+ Rec Yards"),
     ("receptions", 3.5, "4+ Receptions"),
-    ("receptions", 5.5, "6+ Receptions"),
     ("rec_tds", 0.5, "Anytime TD (rec)"),
 ]
 
@@ -285,7 +282,8 @@ class NFLRanker:
             pr.score = self._score(pr)
             pr.tier = self._tier(pr.score)
             results.append(pr)
-        return results
+        # Bettable board = Tier A/B only (audit: Tier C hit 23%)
+        return [r for r in results if r.tier in ('A', 'B')]  # Tier A/B only
 
     def _score(self, pr) -> float:
         """Score 0-100. Prior-year-based early; penalize thin data + injuries."""
