@@ -77,45 +77,71 @@ class NFLGrader:
 
     def _get_week_stat(self, player_name, prop_stat, pred_date):
         """
-        Get a player's actual value for prop_stat in the game nearest
-        pred_date. Returns float or None if not found / not yet played.
+        Pull a player's actual value for prop_stat in the game closest to
+        pred_date. Date comes from top-level events[eventId].gameDate;
+        QB gamelogs (labels contain CMP) use the QB parser.
         """
         from analysis.nfl_ranker import _parse_qb_game, _parse_skill_game
+        from datetime import datetime, date as _date
+
         pid = self._find_player_id(player_name)
         if not pid:
             return None
-
-        # pull current-season gamelog
         gl = self._get(f"{COMMON}/athletes/{pid}/gamelog",
                       params={"season": CURRENT_SEASON})
         if not gl:
             return None
         labels = gl.get("labels", []) or gl.get("names", [])
+        events_meta = gl.get("events", {})  # eventId -> {gameDate, week, ...}
 
-        # find the game on/after pred_date (the predicted game)
-        best = None
+        # normalize prediction date
+        try:
+            pd = (pred_date if isinstance(pred_date, _date)
+                  else datetime.fromisoformat(str(pred_date)[:10]).date())
+        except Exception:
+            pd = None
+
+        # collect (game_date, stats) for each game
+        candidates = []
         for st in gl.get("seasonTypes", []):
             for cat in st.get("categories", []):
                 for ev in cat.get("events", []):
-                    gdate = ev.get("gameDate", "") or ev.get("date", "")
+                    eid = str(ev.get("eventId", ""))
                     stats = ev.get("stats", [])
                     if not stats:
                         continue
-                    # match the prediction's game window (same week ~ within 4 days)
-                    if gdate and str(gdate)[:10] >= str(pred_date):
-                        best = (labels, stats)
-                        break
-                if best:
-                    break
-            if best:
-                break
+                    raw = (events_meta.get(eid, {}) or {}).get("gameDate", "")
+                    gdate = None
+                    if raw:
+                        try:
+                            gdate = datetime.fromisoformat(
+                                raw.replace("Z", "+00:00")).date()
+                        except Exception:
+                            gdate = None
+                    candidates.append((gdate, stats))
 
-        if not best:
+        if not candidates:
             return None
 
-        is_qb = prop_stat in ("pass_yards", "pass_tds", "completions")
-        parsed = (_parse_qb_game(best[0], best[1]) if is_qb
-                 else _parse_skill_game(best[0], best[1]))
+        # pick the game closest to the prediction date (same week = <=6 days)
+        chosen = None
+        if pd:
+            best = 99
+            for gdate, stats in candidates:
+                if gdate is None:
+                    continue
+                diff = abs((gdate - pd).days)
+                if diff < best:
+                    best, chosen = diff, stats
+            if best > 6:
+                chosen = None
+
+        if chosen is None:
+            return None
+
+        is_qb = "CMP" in [str(l).upper() for l in labels]
+        parsed = (_parse_qb_game(labels, chosen) if is_qb
+                  else _parse_skill_game(labels, chosen))
         return parsed.get(prop_stat)
 
     def grade_pending(self) -> int:
