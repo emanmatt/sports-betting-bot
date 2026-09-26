@@ -2,10 +2,11 @@
 analysis/game_analysis.py
 
 Per-game Claude analysis — turns the model's edge data + injuries + live
-news into a framework-driven writeup for each game (not a stats table).
+news + team/scheme matchup into a framework-driven writeup for each game
+(not a stats table).
 
 Uses the Anthropic API (your key) + MASTER_SYSTEM_PROMPT framework.
-No OddsAPI credits needed. One Claude call + one web search per game;
+No OddsAPI credits needed. One Claude call + two web searches per game;
 results cached by the caller so re-viewing doesn't re-spend.
 """
 
@@ -34,6 +35,24 @@ def _web_context(query: str, extraction_prompt: str) -> str:
     except Exception as e:
         logger.debug(f"[GameAnalysis] web search failed: {e}")
         return "(no recent web context available)"
+
+
+def _team_matchup_context(matchup: str, home: str, away: str) -> str:
+    """Offensive/defensive identity of both teams + the scheme funnel."""
+    return _web_context(
+        f"{away} vs {home} NFL 2026 team offense defense rankings run pass "
+        f"points per game yards allowed",
+        f"For {matchup}, summarize each team plainly:\n"
+        f"(1) OFFENSE — run-heavy or pass-heavy, pace/plays, points per game, "
+        f"and their biggest offensive strength.\n"
+        f"(2) DEFENSE — rush-defense rank and pass-defense rank (yards and "
+        f"points allowed), and whether they are stronger against the run or "
+        f"the pass.\n"
+        f"(3) THE MATCHUP — which side's offensive strength meets the other's "
+        f"defensive weakness (a 'funnel' spot), e.g. a weak run defense facing "
+        f"a run-first offense funnels volume to the backs.\n"
+        f"Use current-season ranks where available, else recent form. "
+        f"Concise, factual, no betting advice.")
 
 
 def analyze_nfl_game(game, ranker) -> dict:
@@ -70,14 +89,17 @@ def analyze_nfl_game(game, ranker) -> dict:
     if not plays_txt:
         plays_txt = "(no strong model plays surfaced for this game)"
 
-    # 3. Live web context (injuries, roles, matchup)
+    # 3. Team & scheme matchup profile (offense/defense identity + funnel)
+    team_ctx = _team_matchup_context(matchup, game.home_team, game.away_team)
+
+    # 4. Live web context (injuries, roles, matchup)
     web = _web_context(
         f"{matchup} NFL injuries inactives news preview 2026 week",
         f"For the game {matchup}: extract confirmed injuries/inactives, "
         f"backfield/target roles, key matchups, weather if outdoor, and any "
         f"news that affects rushing or receiving volume. Concise, factual.")
 
-    # 4. Claude writeup
+    # 5. Claude writeup
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     prompt = f"""Analyze this NFL game for a sharp bettor. Use the framework:
 tier the data (hard vs contextual vs soft), give the strongest 1-3 plays
@@ -86,19 +108,28 @@ with real reasoning, a counter-case, and an honest confidence level.
 GAME: {matchup}
 Kickoff: {game.game_time}
 
+TEAM & MATCHUP PROFILE (offensive/defensive identity, scheme funnel):
+{team_ctx}
+
 MODEL EDGE PLAYS (our data — rush-yard props are our proven edge; hit
-rates are from recent games, prior-year early season):
+rates are from recent games, prior-year early season. Judge whether each
+player is trending UP or COOLING OFF from the hit rate + game count, and
+whether the matchup profile above supports the volume):
 {plays_txt}
 
 LIVE WEB CONTEXT (injuries, roles, matchup news):
 {web}
 
-Write a tight game analysis (200-300 words):
-1. THE LEAN — best 1-3 plays and WHY (role, volume, matchup, scheme)
-2. SITUATIONAL FACTORS — injuries opening/closing opportunity, game
-   script, pace, who's in/out
-3. COUNTER-CASE — what realistically makes the lean miss
-4. CONFIDENCE — play it / lean / pass, and how confident
+Write a tight game analysis (250-350 words):
+1. THE LEAN — best 1-3 plays and WHY (role, volume, scheme matchup,
+   recent player form)
+2. TEAM MATCHUP — each team's offensive & defensive identity, and where the
+   funnel points (does a weak run D vs a run-first offense push volume to the
+   backs? is this a pass-funnel spot?). Tie the plays to it explicitly.
+3. SITUATIONAL FACTORS — injuries opening/closing opportunity, game script,
+   pace, who's in/out
+4. COUNTER-CASE — what realistically makes the lean miss
+5. CONFIDENCE — play it / lean / pass, and how confident
 
 Ground everything in the data given. Do NOT invent stats. Flag thin data
 plainly. Our rush-yard props are the edge; receiving/passing props have
@@ -112,7 +143,7 @@ been weaker — weight accordingly. No hype — an honest bettor's read."""
 
     try:
         resp = client.messages.create(
-            model=MODEL, max_tokens=800, system=sysprompt,
+            model=MODEL, max_tokens=900, system=sysprompt,
             messages=[{"role": "user", "content": prompt}])
         writeup = resp.content[0].text
     except Exception as e:
