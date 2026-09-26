@@ -1,9 +1,13 @@
 """
 analysis/saved_analyses.py
 
-Durable storage for saved game analyses, so your best writeups survive app
-reboots. Backed by the same Postgres (Supabase) engine as the rest of the app.
-The table is created lazily on first use — no manual migration needed.
+Durable storage for saved game analyses AND TD boards, so your best work
+survives app reboots. Backed by the same Postgres (Supabase) engine as the
+rest of the app. Table + columns are created/upgraded lazily on first use —
+no manual migration needed.
+
+Each row has a `kind`: 'analysis' or 'td'. Ratings (0-5) drive the
+leaderboards in the Game Analysis tab.
 """
 
 import json
@@ -33,18 +37,22 @@ def ensure_table():
     eng = _engine()
     with eng.begin() as c:
         c.execute(text(_DDL))
+        # add the kind column on existing installs (safe if it already exists)
+        c.execute(text("ALTER TABLE saved_analyses "
+                       "ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'analysis'"))
 
 
-def save_analysis(matchup, sport, writeup, edge_plays):
-    """Insert or refresh a saved analysis. Re-analyzing a matchup updates the
-    writeup but keeps whatever rating you already gave it."""
+def save_analysis(matchup, sport, writeup, edge_plays, kind="analysis"):
+    """Insert or refresh a saved item. Re-saving the same matchup+kind updates
+    the text but keeps whatever rating you already gave it."""
     ensure_table()
     eng = _engine()
     plays_json = json.dumps(edge_plays or [])
     with eng.begin() as c:
         row = c.execute(
-            text("SELECT id FROM saved_analyses WHERE matchup=:m AND sport=:s"),
-            {"m": matchup, "s": sport}).fetchone()
+            text("SELECT id FROM saved_analyses "
+                 "WHERE matchup=:m AND sport=:s AND kind=:k"),
+            {"m": matchup, "s": sport, "k": kind}).fetchone()
         if row:
             c.execute(text(
                 "UPDATE saved_analyses SET writeup=:w, edge_plays=:e, "
@@ -52,22 +60,25 @@ def save_analysis(matchup, sport, writeup, edge_plays):
                 {"w": writeup, "e": plays_json, "i": row[0]})
             return row[0]
         res = c.execute(text(
-            "INSERT INTO saved_analyses (matchup, sport, writeup, edge_plays) "
-            "VALUES (:m, :s, :w, :e) RETURNING id"),
-            {"m": matchup, "s": sport, "w": writeup, "e": plays_json})
+            "INSERT INTO saved_analyses (matchup, sport, writeup, edge_plays, kind) "
+            "VALUES (:m, :s, :w, :e, :k) RETURNING id"),
+            {"m": matchup, "s": sport, "w": writeup, "e": plays_json, "k": kind})
         return res.fetchone()[0]
 
 
-def list_saved(sport=None):
-    """All saved analyses, best-rated first."""
+def list_saved(sport=None, kind=None):
+    """Saved items, best-rated first. Filter by sport and/or kind."""
     ensure_table()
     eng = _engine()
-    q = ("SELECT id, matchup, sport, writeup, edge_plays, rating, created_at "
+    q = ("SELECT id, matchup, sport, writeup, edge_plays, rating, created_at, kind "
          "FROM saved_analyses")
-    params = {}
+    clauses, params = [], {}
     if sport:
-        q += " WHERE sport=:s"
-        params["s"] = sport
+        clauses.append("sport=:s"); params["s"] = sport
+    if kind:
+        clauses.append("kind=:k"); params["k"] = kind
+    if clauses:
+        q += " WHERE " + " AND ".join(clauses)
     q += " ORDER BY rating DESC, created_at DESC"
     with eng.connect() as c:
         rows = c.execute(text(q), params).fetchall()
@@ -79,7 +90,8 @@ def list_saved(sport=None):
             plays = []
         out.append({"id": r[0], "matchup": r[1], "sport": r[2],
                     "writeup": r[3], "edge_plays": plays,
-                    "rating": r[5] or 0, "created_at": r[6]})
+                    "rating": r[5] or 0, "created_at": r[6],
+                    "kind": r[7] or "analysis"})
     return out
 
 

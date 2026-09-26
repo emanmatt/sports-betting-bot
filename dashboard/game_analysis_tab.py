@@ -2,9 +2,11 @@
 dashboard/game_analysis_tab.py
 
 Primary view: a Claude-written framework analysis per game — not stat tables.
-- Analyze ONE game (fast, one Claude call) or the whole slate.
-- Save any analysis to the database, so it survives app reboots.
-- Rate saved analyses 0-5 stars; best-rated sort to the top.
+- Analyze ONE game (fast) or the whole slate.
+- 🎯 TD Tracker: play/pace estimate + ranked anytime-TD scorers per game.
+- Save analyses AND TD boards to the database (survives reboots).
+- Rate saved items 0-5 stars; leaderboards rank the best analyses and the
+  best TD boards across every saved game.
 Uses the Anthropic key (no OddsAPI credits).
 """
 
@@ -28,12 +30,60 @@ def _edge_caption(edge_plays):
         pass
 
 
+def _stars(n):
+    n = int(n or 0)
+    return "★" * n + "☆" * (5 - n)
+
+
+def _fmt_date(d):
+    try:
+        return d.strftime("%b %d")
+    except Exception:
+        return ""
+
+
+def _best_td_line(board):
+    """Pull the '**BEST TD BET:** ...' line out of a TD board for the table."""
+    for line in str(board).splitlines():
+        if "BEST TD BET" in line.upper():
+            return line.split(":", 1)[-1].strip().strip("*").strip() or "—"
+    return "—"
+
+
+def _render_saved(rows, set_rating, delete_saved, td=False):
+    """Expanders with the full text + rating slider + delete, per saved item."""
+    for row in rows:
+        rating = int(row.get("rating", 0) or 0)
+        with st.expander(f"{_stars(rating)}  {row['matchup']}", expanded=False):
+            st.markdown(row["writeup"])
+            if not td:
+                _edge_caption(row.get("edge_plays"))
+            rc1, rc2, rc3 = st.columns([2, 1, 1])
+            with rc1:
+                new_rating = st.slider("Rating", 0, 5, rating,
+                                       key=f"rate_{row['id']}")
+            with rc2:
+                if st.button("Save rating", key=f"saverate_{row['id']}"):
+                    try:
+                        set_rating(row["id"], new_rating)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Rating failed: {e}")
+            with rc3:
+                if st.button("🗑️ Delete", key=f"del_{row['id']}"):
+                    try:
+                        delete_saved(row["id"])
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Delete failed: {e}")
+
+
 def render_game_analysis_tab():
     st.subheader("🧠 Game Analysis")
-    st.caption("A framework breakdown per game — the lean, situational factors, "
-               "counter-case, and confidence — from the model's edge data + live "
-               "injury/news search. Uses Anthropic credits (not OddsAPI). "
-               "Rush-yard props are the proven edge.")
+    st.caption("A framework breakdown per game — situational factors, the "
+               "team/scheme matchup, counter-case, and confidence — from the "
+               "model's edge data + live injury/news search. Plus a 🎯 TD board. "
+               "Uses Anthropic credits (not OddsAPI). Rush-yard props are the edge.")
 
     try:
         from analysis.nfl_ranker import NFLRanker
@@ -86,6 +136,19 @@ def render_game_analysis_tab():
         st.session_state["game_analyses"] = results
         st.rerun()
 
+    if run_td:
+        from analysis.td_tracker import project_touchdowns
+        g = game_by_matchup[pick]
+        existing = results.get(pick, {})
+        with st.spinner(f"Projecting touchdowns for {pick}…"):
+            try:
+                td_boards[pick] = project_touchdowns(g, existing.get("edge_plays"))
+            except Exception as e:
+                td_boards[pick] = {"matchup": pick,
+                                   "board": f"TD projection failed: {e}"}
+        st.session_state["td_boards"] = td_boards
+        st.rerun()
+
     if run_all:
         from analysis.game_analysis import analyze_nfl_game
         prog = st.progress(0)
@@ -102,19 +165,6 @@ def render_game_analysis_tab():
         st.session_state["game_analyses"] = results
         st.rerun()
 
-    if run_td:
-        from analysis.td_tracker import project_touchdowns
-        g = game_by_matchup[pick]
-        existing = results.get(pick, {})
-        with st.spinner(f"Projecting touchdowns for {pick}…"):
-            try:
-                td_boards[pick] = project_touchdowns(g, existing.get("edge_plays"))
-            except Exception as e:
-                td_boards[pick] = {"matchup": pick,
-                                   "board": f"TD projection failed: {e}"}
-        st.session_state["td_boards"] = td_boards
-        st.rerun()
-
     # ---- Saved store (DB) ----
     store_ok = True
     try:
@@ -122,7 +172,7 @@ def render_game_analysis_tab():
                                              set_rating, delete_saved)
     except Exception as e:
         store_ok = False
-        st.warning(f"Saved-analysis store unavailable: {e}")
+        st.warning(f"Saved-item store unavailable: {e}")
 
     # ---- Fresh (unsaved) results this session ----
     if results:
@@ -134,18 +184,32 @@ def render_game_analysis_tab():
                 st.markdown(data["writeup"])
                 _edge_caption(data.get("edge_plays"))
                 tb = td_boards.get(matchup)
+                td_failed = tb and str(tb.get("board", "")).startswith("TD projection failed")
                 if tb:
                     st.markdown("---")
                     st.markdown("#### 🎯 TD Board")
                     st.markdown(tb["board"])
-                if store_ok and not failed:
-                    if st.button("💾 Save", key=f"save_{matchup}"):
-                        try:
-                            save_analysis(matchup, SPORT, data["writeup"],
-                                          data.get("edge_plays", []))
-                            st.success("Saved — rate it in the section below.")
-                        except Exception as e:
-                            st.error(f"Save failed: {e}")
+                if store_ok:
+                    sc1, sc2 = st.columns([1, 1])
+                    with sc1:
+                        if not failed and st.button("💾 Save analysis",
+                                                    key=f"save_an_{matchup}"):
+                            try:
+                                save_analysis(matchup, SPORT, data["writeup"],
+                                              data.get("edge_plays", []),
+                                              kind="analysis")
+                                st.success("Analysis saved — rate it below.")
+                            except Exception as e:
+                                st.error(f"Save failed: {e}")
+                    with sc2:
+                        if tb and not td_failed and st.button(
+                                "💾 Save TD board", key=f"save_td_{matchup}"):
+                            try:
+                                save_analysis(matchup, SPORT, tb["board"], [],
+                                              kind="td")
+                                st.success("TD board saved — rate it below.")
+                            except Exception as e:
+                                st.error(f"Save failed: {e}")
 
     # ---- Standalone TD boards (matchup not analyzed this session) ----
     standalone_td = {m: b for m, b in td_boards.items() if m not in results}
@@ -153,41 +217,64 @@ def render_game_analysis_tab():
         st.divider()
         st.markdown("### 🎯 TD Boards")
         for m, b in standalone_td.items():
+            td_failed = str(b.get("board", "")).startswith("TD projection failed")
             with st.expander(f"🎯 {m}", expanded=(len(standalone_td) == 1)):
                 st.markdown(b["board"])
+                if store_ok and not td_failed:
+                    if st.button("💾 Save TD board", key=f"save_td_solo_{m}"):
+                        try:
+                            save_analysis(m, SPORT, b["board"], [], kind="td")
+                            st.success("TD board saved — rate it below.")
+                        except Exception as e:
+                            st.error(f"Save failed: {e}")
 
-    # ---- Saved & rated (from DB) ----
-    if store_ok:
-        try:
-            saved = list_saved(SPORT)
-        except Exception as e:
-            saved = []
-            st.warning(f"Couldn't load saved analyses: {e}")
-        st.divider()
-        st.markdown(f"### ⭐ Saved & rated ({len(saved)})")
-        if not saved:
-            st.info("Save an analysis above to start rating your best writeups.")
-        for row in saved:
-            rating = int(row.get("rating", 0) or 0)
-            stars = "★" * rating + "☆" * (5 - rating)
-            with st.expander(f"{stars}  {row['matchup']}", expanded=False):
-                st.markdown(row["writeup"])
-                _edge_caption(row.get("edge_plays"))
-                rc1, rc2, rc3 = st.columns([2, 1, 1])
-                with rc1:
-                    new_rating = st.slider("Rating", 0, 5, rating,
-                                           key=f"rate_{row['id']}")
-                with rc2:
-                    if st.button("Save rating", key=f"saverate_{row['id']}"):
-                        try:
-                            set_rating(row["id"], new_rating)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Rating failed: {e}")
-                with rc3:
-                    if st.button("🗑️ Delete", key=f"del_{row['id']}"):
-                        try:
-                            delete_saved(row["id"])
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Delete failed: {e}")
+    if not store_ok:
+        return
+
+    # ---- Leaderboards + saved items ----
+    try:
+        saved_an = list_saved(SPORT, kind="analysis")
+        saved_td = list_saved(SPORT, kind="td")
+    except Exception as e:
+        st.warning(f"Couldn't load saved items: {e}")
+        return
+
+    try:
+        import pandas as pd
+    except Exception:
+        pd = None
+
+    # ===== Best analyses =====
+    st.divider()
+    st.markdown(f"### 🏆 Best analyses ({len(saved_an)})")
+    if not saved_an:
+        st.info("Save an analysis above to start ranking your best reads.")
+    else:
+        if pd is not None:
+            df = pd.DataFrame([{
+                "Rank": i + 1,
+                "Matchup": r["matchup"],
+                "Rating": _stars(r["rating"]),
+                "Saved": _fmt_date(r["created_at"]),
+            } for i, r in enumerate(saved_an)])
+            st.dataframe(df, hide_index=True, use_container_width=True)
+        st.caption("Open any game below to read it, change its rating, or delete it.")
+        _render_saved(saved_an, set_rating, delete_saved, td=False)
+
+    # ===== Best TD boards =====
+    st.divider()
+    st.markdown(f"### 🏆 Best TD boards ({len(saved_td)})")
+    if not saved_td:
+        st.info("Save a TD board above to start ranking your best TD props.")
+    else:
+        if pd is not None:
+            df = pd.DataFrame([{
+                "Rank": i + 1,
+                "Matchup": r["matchup"],
+                "Best TD bet": _best_td_line(r["writeup"]),
+                "Rating": _stars(r["rating"]),
+                "Saved": _fmt_date(r["created_at"]),
+            } for i, r in enumerate(saved_td)])
+            st.dataframe(df, hide_index=True, use_container_width=True)
+        st.caption("Open any board below to read it, change its rating, or delete it.")
+        _render_saved(saved_td, set_rating, delete_saved, td=True)
