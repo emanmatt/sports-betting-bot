@@ -14,9 +14,46 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import re
 import streamlit as st
 
 SPORT = "NFL"
+
+_SCORER_RE = re.compile(r'^\s*\d+\.\s*(.+?)\s*[—\-]\s*~?(\d+)\s*%', re.U)
+
+
+def _parse_td_scorers(board, matchup, rating):
+    """Pull the numbered '1. Player (POS) — ~XX% ...' lines out of a TD board."""
+    rows = []
+    for line in str(board).splitlines():
+        m = _SCORER_RE.match(line)
+        if not m:
+            continue
+        who = m.group(1).strip()
+        pct = int(m.group(2))
+        pos = ""
+        pm = re.search(r'\(([^)]+)\)', who)
+        if pm:
+            pos = pm.group(1)
+            who = who[:pm.start()].strip()
+        rows.append({"player": who, "pos": pos, "pct": pct,
+                     "matchup": matchup, "rating": rating})
+    return rows
+
+
+def _flatten_plays(saved_rows):
+    """Flatten every saved analysis's edge plays into one player list."""
+    rows = []
+    for r in saved_rows:
+        for tup in (r.get("edge_plays") or []):
+            try:
+                name, label, hr, tier = tup
+                rows.append({"player": name, "prop": label,
+                             "hit": float(hr), "tier": tier,
+                             "matchup": r["matchup"], "rating": r["rating"]})
+            except Exception:
+                continue
+    return rows
 
 
 def _edge_caption(edge_plays):
@@ -244,37 +281,46 @@ def render_game_analysis_tab():
     except Exception:
         pd = None
 
-    # ===== Best analyses =====
+    # ===== Top plays across saved analyses (player-level) =====
     st.divider()
-    st.markdown(f"### 🏆 Best analyses ({len(saved_an)})")
-    if not saved_an:
-        st.info("Save an analysis above to start ranking your best reads.")
-    else:
-        if pd is not None:
-            df = pd.DataFrame([{
-                "Rank": i + 1,
-                "Matchup": r["matchup"],
-                "Rating": _stars(r["rating"]),
-                "Saved": _fmt_date(r["created_at"]),
-            } for i, r in enumerate(saved_an)])
-            st.dataframe(df, hide_index=True, use_container_width=True)
-        st.caption("Open any game below to read it, change its rating, or delete it.")
+    st.markdown(f"### 🏆 Top plays — saved analyses ({len(saved_an)} games)")
+    plays = _flatten_plays(saved_an)
+    plays.sort(key=lambda x: x["hit"], reverse=True)
+    if not plays:
+        st.info("Save an analysis above to rank its individual plays here.")
+    elif pd is not None:
+        df = pd.DataFrame([{
+            "Rank": i + 1,
+            "Player": p["player"],
+            "Prop": p["prop"],
+            "Model hit%": f'{p["hit"]:.0f}%',
+            "Tier": p["tier"],
+            "Matchup": p["matchup"],
+            "Rating": _stars(p["rating"]),
+        } for i, p in enumerate(plays)])
+        st.dataframe(df, hide_index=True, use_container_width=True)
+    if saved_an:
+        st.caption("Saved analyses — open to read, re-rate, or delete:")
         _render_saved(saved_an, set_rating, delete_saved, td=False)
 
-    # ===== Best TD boards =====
+    # ===== Top TD scorers across saved boards (player-level) =====
     st.divider()
-    st.markdown(f"### 🏆 Best TD boards ({len(saved_td)})")
-    if not saved_td:
-        st.info("Save a TD board above to start ranking your best TD props.")
-    else:
-        if pd is not None:
-            df = pd.DataFrame([{
-                "Rank": i + 1,
-                "Matchup": r["matchup"],
-                "Best TD bet": _best_td_line(r["writeup"]),
-                "Rating": _stars(r["rating"]),
-                "Saved": _fmt_date(r["created_at"]),
-            } for i, r in enumerate(saved_td)])
-            st.dataframe(df, hide_index=True, use_container_width=True)
-        st.caption("Open any board below to read it, change its rating, or delete it.")
+    st.markdown(f"### 🏆 Top TD scorers — saved boards ({len(saved_td)} games)")
+    scorers = []
+    for r in saved_td:
+        scorers.extend(_parse_td_scorers(r["writeup"], r["matchup"], r["rating"]))
+    scorers.sort(key=lambda x: x["pct"], reverse=True)
+    if not scorers:
+        st.info("Save a TD board above to rank its scorers here.")
+    elif pd is not None:
+        df = pd.DataFrame([{
+            "Rank": i + 1,
+            "Player": s["player"] + (f' ({s["pos"]})' if s["pos"] else ""),
+            "Anytime TD": f'{s["pct"]}%',
+            "Matchup": s["matchup"],
+            "Rating": _stars(s["rating"]),
+        } for i, s in enumerate(scorers)])
+        st.dataframe(df, hide_index=True, use_container_width=True)
+    if saved_td:
+        st.caption("Saved TD boards — open to read, re-rate, or delete:")
         _render_saved(saved_td, set_rating, delete_saved, td=True)
