@@ -220,418 +220,49 @@ with st.sidebar:
 
 # ── Main tabs ─────────────────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14, tab15 = st.tabs([
-    "📅 Today's Games",
-    "🔥 Top Props",
-    "⭐ Best Props",
-    "🛒 Line Shop",
-    "💰 Edges",
-    "⚡ All Props",
-    "🎯 AI Signals",
-    "📰 News",
-    "📈 Line Movement",
-    "🤖 Claude",
+t_analysis, t_props, t_calc, t_track = st.tabs([
+    "🧠 Game Analysis",
+    "🔥 Props",
+    "🎰 Calc & Demons",
     "📊 Track Record",
-    "🎰 Parlays",
-    "💎 Value",
-    "🧮 Calc & Demons",
-    "🏈 NFL Props",
 ])
 
+# ── 🧠 GAME ANALYSIS (primary) ──
+with t_analysis:
+    try:
+        from dashboard.game_analysis_tab import render_game_analysis_tab
+        render_game_analysis_tab()
+    except Exception as e:
+        st.error(f"Game Analysis error: {e}")
 
-# ════════════════════════════════════════════════════════
-# TAB 1: TODAY'S GAMES
-# ════════════════════════════════════════════════════════
-with tab1:
-    games = get_todays_games(selected_sport)
-    st.subheader(f"{len(games)} {selected_sport} Games Today")
-
-    if not games:
-        st.info(f"No {selected_sport} games today. Scheduler is running and will update automatically.")
-    else:
-        for g in games:
-            with st.container():
-                c1, mid, c2 = st.columns([5, 1, 5])
-                with c1:
-                    st.markdown(f"### {g['away']}")
-                    st.markdown(f"**ML:** {fmt_ml(g['away_ml'])} {ml_pct(g['away_ml'])}")
-                with mid:
-                    st.markdown("<br><br>**@**", unsafe_allow_html=True)
-                with c2:
-                    st.markdown(f"### {g['home']}")
-                    st.markdown(f"**ML:** {fmt_ml(g['home_ml'])} {ml_pct(g['home_ml'])}")
-
-                m1, m2, m3, m4 = st.columns(4)
-                m1.metric("Spread", fmt_spread(g["spread"]),
-                          delta=f"{g['spread_move']:+.1f}" if g.get("spread_move") else None,
-                          delta_color="inverse")
-                m2.metric("Total", str(g["total"]) if g["total"] else "N/A",
-                          delta=f"{g['total_move']:+.1f}" if g.get("total_move") else None)
-                m3.metric("Time", g["time"])
-                with m4:
-                    if g.get("sharp_move"):
-                        st.markdown("### ⚡ SHARP MOVE")
-                        st.caption("Line moved 1.5+ pts")
-                    else:
-                        st.metric("Movement", "Stable")
-                st.divider()
-
-
-# ════════════════════════════════════════════════════════
-# TAB 2: TOP HITS (ranked batter hit plays)
-# ════════════════════════════════════════════════════════
-with tab2:
+# ── 🔥 PROPS (sport-routed board) ──
+with t_props:
     try:
         if selected_sport == "NFL":
             from dashboard.nfl_tab import render_nfl_tab
             render_nfl_tab()
         elif selected_sport == "NBA":
             st.subheader("🏀 NBA Props")
-            st.info("🏀 The 2026-27 NBA season starts **October 20, 2026**. "
-                    "Full NBA prop analysis — the same ranking, value, parlay and "
-                    "learning tools as MLB — will be live once games begin and "
-                    "real data is available. Building it now would only produce "
-                    "guesses; it'll be grounded in actual games at tip-off.")
+            st.info("The 2026-27 NBA season starts October 20, 2026 — full "
+                    "analysis comes online once games begin.")
         else:
             from dashboard.tophits_tab import render_tophits_tab
             render_tophits_tab(selected_sport)
     except Exception as e:
-        st.error(f"Top Props error: {e}")
+        st.error(f"Props error: {e}")
 
-
-# ════════════════════════════════════════════════════════
-# TAB 3: BEST PROPS (auto-populated from DB)
-# ════════════════════════════════════════════════════════
-with tab3:
-    st.subheader("⭐ Best Player Prop Edges Today")
-    st.caption("Automatically updated every 2 hours by the scheduler. No manual action needed.")
-
-    best = get_best_props(limit=15)
-
-    if not best:
-        st.info("Props are being analyzed automatically. Check back in a few minutes — the scheduler fetches props every 2 hours.")
-        st.markdown("**What this shows when populated:**")
-        st.markdown("- Top prop edges across all sports")
-        st.markdown("- Line comparison across all books")
-        st.markdown("- Player historical averages vs the line")
-        st.markdown("- Edge strength score (1-10)")
-    else:
-        # Summary row
-        over_count  = sum(1 for p in best if p.edge_direction == "over")
-        under_count = sum(1 for p in best if p.edge_direction == "under")
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Total Edges", len(best))
-        m2.metric("Over Edges",  over_count)
-        m3.metric("Under Edges", under_count)
-        st.divider()
-
-        for prop in best:
-            direction = prop.edge_direction or "none"
-            css_class = "best-prop" if direction == "over" else "prop-under"
-            emoji = "📈" if direction == "over" else "📉"
-            star = "⭐ " if prop.is_best_bet else ""
-
-            with st.expander(
-                f"{star}{emoji} {prop.player_name} — "
-                f"{prop.prop_label} {direction.upper()} {prop.best_over_line} "
-                f"| {prop.sport} | Strength: {prop.edge_strength:.1f}/10",
-                expanded=prop.is_best_bet
-            ):
-                c1, c2, c3 = st.columns(3)
-
-                with c1:
-                    st.markdown("**📊 Best Lines by Book**")
-                    if prop.all_lines:
-                        df = pd.DataFrame(prop.all_lines)
-                        if not df.empty:
-                            df = df.sort_values("line")
-                            st.dataframe(
-                                df[["sportsbook","line","over_odds","under_odds"]],
-                                hide_index=True,
-                                use_container_width=True
-                            )
-                    st.markdown(f"✅ **Best OVER:** {prop.best_over_line} "
-                               f"({fmt_ml(prop.best_over_odds)}) @ {prop.best_over_book}")
-                    st.markdown(f"✅ **Best UNDER:** {prop.best_under_line} "
-                               f"({fmt_ml(prop.best_under_odds)}) @ {prop.best_under_book}")
-                    if prop.line_spread and prop.line_spread >= 0.5:
-                        st.warning(f"⚡ Books disagree by {prop.line_spread} — shop for best number")
-
-                with c2:
-                    st.markdown("**📈 Player History**")
-                    if prop.player_avg:
-                        st.metric("Season Avg", prop.player_avg,
-                                 delta=f"{prop.player_avg - prop.best_over_line:+.1f} vs line"
-                                 if prop.best_over_line else None)
-                    if prop.recent_avg:
-                        st.metric("Last 5 Avg", prop.recent_avg)
-                    if prop.vs_opponent_avg:
-                        st.metric(f"vs {prop.opponent}", prop.vs_opponent_avg)
-                    if prop.edge_reason:
-                        st.caption(prop.edge_reason)
-
-                with c3:
-                    st.markdown("**🔍 Context**")
-                    st.markdown(f"**Team:** {prop.team or 'N/A'}")
-                    st.markdown(f"**Opponent:** {prop.opponent or 'N/A'}")
-                    strength_bars = "🟢" * int(prop.edge_strength/2) + "⚪" * (5 - int(prop.edge_strength/2))
-                    st.markdown(f"**Edge:** {strength_bars}")
-                    if prop.web_context:
-                        st.markdown("**Auto-researched:**")
-                        st.caption(prop.web_context[:300])
-                    st.caption(f"Updated: {prop.generated_at.strftime('%I:%M %p') if prop.generated_at else 'N/A'}")
-
-
-# ════════════════════════════════════════════════════════
-# TAB 4: LINE SHOP (multi-book + DFS)
-# ════════════════════════════════════════════════════════
-with tab4:
+# ── 🎰 CALC & DEMONS ──
+with t_calc:
     try:
-        from dashboard.lineshop_tab import render_lineshop_tab
-        render_lineshop_tab(selected_sport)
+        from dashboard.parlay_calc_tab import render_parlay_calc_tab
+        render_parlay_calc_tab()
     except Exception as e:
-        st.error(f"Line Shop error: {e}")
+        st.error(f"Calc & Demons error: {e}")
 
-
-# ════════════════════════════════════════════════════════
-# TAB 5: EDGES (arbitrage, middles, +EV)
-# ════════════════════════════════════════════════════════
-with tab5:
-    try:
-        from dashboard.edges_tab import render_edges_tab
-        render_edges_tab(selected_sport)
-    except Exception as e:
-        st.error(f"Edges error: {e}")
-
-
-# ════════════════════════════════════════════════════════
-# TAB 6: ALL PROPS with filters
-# ════════════════════════════════════════════════════════
-with tab6:
-    st.subheader(f"⚡ {selected_sport} Player Props")
-
-    f1, f2, f3 = st.columns(3)
-    with f1:
-        min_str = st.slider("Min Edge Strength", 0.0, 10.0, 2.0)
-    with f2:
-        dir_filter = st.selectbox("Direction", ["All", "Over", "Under"])
-    with f3:
-        prop_filter = st.selectbox("Sport", SUPPORTED_SPORTS,
-                                   index=SUPPORTED_SPORTS.index(selected_sport))
-
-    edges = get_prop_edges(prop_filter, min_str, dir_filter)
-
-    if not edges:
-        st.info(f"No {prop_filter} props found matching filters. "
-               f"Props update automatically every 2 hours.")
-    else:
-        st.caption(f"{len(edges)} edges found")
-        for edge in edges:
-            direction = edge.edge_direction or "none"
-            emoji = "📈" if direction == "over" else "📉"
-            with st.expander(
-                f"{emoji} {edge.player_name} — {edge.prop_label} "
-                f"{direction.upper()} {edge.best_over_line} | "
-                f"Strength: {edge.edge_strength:.1f}/10"
-            ):
-                c1, c2 = st.columns(2)
-                with c1:
-                    if edge.all_lines:
-                        df = pd.DataFrame(edge.all_lines)
-                        if not df.empty:
-                            st.dataframe(
-                                df[["sportsbook","line","over_odds","under_odds"]],
-                                hide_index=True, use_container_width=True
-                            )
-                with c2:
-                    st.markdown(f"**Best OVER:** {edge.best_over_line} "
-                               f"{fmt_ml(edge.best_over_odds)} @ {edge.best_over_book}")
-                    st.markdown(f"**Best UNDER:** {edge.best_under_line} "
-                               f"{fmt_ml(edge.best_under_odds)} @ {edge.best_under_book}")
-                    if edge.player_avg:
-                        st.metric("Player Avg", edge.player_avg)
-                    if edge.edge_reason:
-                        st.caption(edge.edge_reason)
-
-
-# ════════════════════════════════════════════════════════
-# TAB 7: AI SIGNALS
-# ════════════════════════════════════════════════════════
-with tab7:
-    st.subheader("🎯 AI Bet Signals")
-
-    # Show cached AI news analysis
-    ai_analysis = get_cached_ai_analysis(selected_sport)
-    if ai_analysis:
-        with st.expander("🤖 Latest AI News Analysis", expanded=True):
-            st.markdown(ai_analysis)
-    else:
-        st.info("AI analysis runs automatically every 3 hours. Check back soon.")
-
-    signals = get_signals(selected_sport)
-    if signals:
-        bets = [s for s in signals if s.bet_selection != "NO BET"]
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Analyzed", len(signals))
-        m2.metric("Bets Found", len(bets))
-        m3.metric("NO BETs", len(signals) - len(bets))
-
-        for s in signals:
-            is_bet = s.bet_selection != "NO BET"
-            icon = "✅" if is_bet else "🚫"
-            with st.expander(f"{icon} {s.game_id} — {s.bet_selection}"):
-                if is_bet:
-                    c1, c2, c3 = st.columns(3)
-                    c1.metric("Type", s.bet_type.upper() if s.bet_type else "N/A")
-                    c2.metric("Confidence", f"{s.confidence:.0f}/10" if s.confidence else "N/A")
-                    c3.metric("Units", s.recommended_units)
-                    if s.reasoning:
-                        st.markdown(f"**Reasoning:** {s.reasoning}")
-                else:
-                    st.caption(s.reasoning or "Insufficient edge identified")
-                if s.red_flags:
-                    st.markdown("**⚠️ Red Flags:**")
-                    for flag in s.red_flags:
-                        st.markdown(f"- {flag}")
-    else:
-        st.info("AI game signals will appear here as they're generated.")
-
-
-# ════════════════════════════════════════════════════════
-# TAB 8: NEWS FEED
-# ════════════════════════════════════════════════════════
-with tab8:
-    st.subheader("📰 News Feed")
-
-    c1, c2 = st.columns(2)
-    with c1:
-        hours = st.selectbox("Time Range", [6, 12, 24, 48], index=3,
-                            format_func=lambda x: f"Last {x} hours")
-    with c2:
-        impact = st.selectbox("Impact", ["All", "High", "Medium", "Low"])
-
-    articles = get_news(selected_sport, hours=hours)
-    if impact != "All":
-        articles = [a for a in articles if a.betting_impact and
-                   a.betting_impact.lower() == impact.lower()]
-
-    if not articles:
-        st.info(f"No {selected_sport} news in the last {hours} hours.")
-    else:
-        st.caption(f"{len(articles)} articles")
-        for a in articles:
-            imp = a.betting_impact or "low"
-            color = "#f44336" if imp == "high" else "#ff9800" if imp == "medium" else "#888"
-            emoji = "🚨" if imp == "high" else "⚠️" if imp == "medium" else "📰"
-            st.markdown(
-                f"<div style='background:#1c2333;border-radius:6px;padding:8px;"
-                f"margin:4px 0;border-left:3px solid {color}'>"
-                f"{emoji} <b>{a.title}</b><br>"
-                f"<span style='color:#888;font-size:12px'>"
-                f"{a.source} · {a.published_at.strftime('%m/%d %I:%M %p') if a.published_at else ''}"
-                f"</span></div>",
-                unsafe_allow_html=True
-            )
-
-
-# ════════════════════════════════════════════════════════
-# TAB 9: LINE MOVEMENT
-# ════════════════════════════════════════════════════════
-with tab9:
-    st.subheader("📈 Line Movement")
-    st.caption("Sharp money = 1.5+ point moves")
-
-    games = get_todays_games(selected_sport)
-    if not games:
-        st.info("No games today.")
-    else:
-        data = [{
-            "Game":         f"{g['away']} @ {g['home']}",
-            "Time":         g["time"],
-            "Spread":       fmt_spread(g["spread"]),
-            "Spread Move":  f"{g['spread_move']:+.1f}" if g.get("spread_move") else "–",
-            "Total":        str(g["total"]) if g["total"] else "N/A",
-            "Total Move":   f"{g['total_move']:+.1f}" if g.get("total_move") else "–",
-            "Sharp?":       "⚡ YES" if g.get("sharp_move") else "No",
-        } for g in games]
-
-        st.dataframe(pd.DataFrame(data), hide_index=True, use_container_width=True)
-
-        sharp = [g for g in games if g.get("sharp_move")]
-        if sharp:
-            st.markdown("### ⚡ Sharp Money Alerts")
-            for g in sharp:
-                st.warning(f"**{g['away']} @ {g['home']}** — "
-                          f"Spread {g['spread_move']:+.1f} | Total {g['total_move']:+.1f}")
-
-        st.divider()
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("**Sharp Money (1.5+ pts):** Professional bettors — most reliable signal")
-        with c2:
-            st.markdown("**Public Money (small moves):** Casual bettors — fades by game time")
-
-
-# ════════════════════════════════════════════════════════
-# TAB 7: CLAUDE — Chat + Auto-Analysis
-# ════════════════════════════════════════════════════════
-with tab10:
-    try:
-        from dashboard.claude_tab import render_claude_tab
-        render_claude_tab(selected_sport)
-    except Exception as e:
-        st.error(f"Claude tab error: {e}")
-        st.info("Make sure your ANTHROPIC_API_KEY is set in Streamlit secrets.")
-
-# ════════════════════════════════════════════════════════
-# TAB 11: TRACK RECORD (learning loop)
-# ════════════════════════════════════════════════════════
-with tab11:
+# ── 📊 TRACK RECORD ──
+with t_track:
     try:
         from dashboard.track_record_tab import render_track_record_tab
         render_track_record_tab()
     except Exception as e:
         st.error(f"Track Record error: {e}")
-
-# ════════════════════════════════════════════════════════
-# TAB 12: PARLAY BUILDER
-# ════════════════════════════════════════════════════════
-with tab12:
-    try:
-        from dashboard.parlay_tab import render_parlay_tab
-        render_parlay_tab()
-    except Exception as e:
-        st.error(f"Parlay Builder error: {e}")
-
-
-# ════════════════════════════════════════════════════════
-# TAB 13: VALUE (real lines + edge)
-# ════════════════════════════════════════════════════════
-with tab13:
-    try:
-        from dashboard.value_tab import render_value_tab
-        render_value_tab(selected_sport)
-    except Exception as e:
-        st.error(f"Value tab error: {e}")
-
-
-# ════════════════════════════════════════════════════════
-# TAB 14: PARLAY CALCULATOR + DEMON SLIPS
-# ════════════════════════════════════════════════════════
-with tab14:
-    try:
-        from dashboard.parlay_calc_tab import render_parlay_calc_tab
-        render_parlay_calc_tab()
-    except Exception as e:
-        st.error(f"Calculator/Demons error: {e}")
-
-
-# ════════════════════════════════════════════════════════
-# TAB 15: NFL PROPS
-# ════════════════════════════════════════════════════════
-with tab15:
-    try:
-        from dashboard.nfl_tab import render_nfl_tab
-        render_nfl_tab()
-    except Exception as e:
-        st.error(f"NFL tab error: {e}")
