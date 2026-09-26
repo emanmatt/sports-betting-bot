@@ -177,9 +177,10 @@ def render_game_analysis_tab():
         from analysis.td_tracker import project_touchdowns
         g = game_by_matchup[pick]
         existing = results.get(pick, {})
-        with st.spinner(f"Projecting touchdowns for {pick}…"):
+        with st.spinner(f"Projecting touchdowns for {pick} (pulling real TD data)…"):
             try:
-                td_boards[pick] = project_touchdowns(g, existing.get("edge_plays"))
+                td_boards[pick] = project_touchdowns(
+                    g, existing.get("edge_plays"), ranker=ranker)
             except Exception as e:
                 td_boards[pick] = {"matchup": pick,
                                    "board": f"TD projection failed: {e}"}
