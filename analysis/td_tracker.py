@@ -12,6 +12,8 @@ model's volume data so the goal-line reads are grounded. Works standalone too
 """
 
 import sys
+import json
+import re
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -20,6 +22,30 @@ from loguru import logger
 from config.settings import ANTHROPIC_API_KEY
 
 MODEL = "claude-sonnet-4-6"
+
+
+def _parse_td_plays(text):
+    """Pull the TD_JSON block into structured, graded TD picks."""
+    m = re.search(r'TD_JSON:\s*(\[.*\])', text, re.S)
+    if not m:
+        return []
+    try:
+        arr = json.loads(m.group(1))
+    except Exception:
+        return []
+    out = []
+    for p in arr:
+        try:
+            out.append({
+                "player": str(p.get("player", "")).strip(),
+                "pos": str(p.get("pos", "")).strip(),
+                "verdict": str(p.get("verdict", "")).strip().title(),
+                "confidence": int(float(p.get("confidence", 0))),
+                "reason": str(p.get("reason", "")).strip(),
+            })
+        except Exception:
+            continue
+    return out
 
 
 def _web(query, extraction):
@@ -111,7 +137,16 @@ Then:
 
 Anchor each % to the REAL TD DATA P(any) above; move off it only with a stated
 reason (matchup funnel, injury vacating goal-line work, role change). Estimate
-plays and expected TDs from pace + points. No hype. Keep it under 250 words."""
+plays and expected TDs from pace + points. No hype. Keep the board under 250 words.
+
+After the board, output on its own line exactly this and nothing after it:
+TD_JSON: [{{"player":"Full Name","pos":"RB","verdict":"Play|Lean|Pass","confidence":<0-100>,"reason":"<=12 words"}}]
+Rules for TD_JSON:
+- Include every scorer you listed for both teams.
+- confidence = your anytime-TD probability, anchored to the REAL TD DATA P(any),
+  adjusted for matchup / injury / role.
+- Any player OUT / inactive / not playing = "Pass", confidence 0.
+- Valid JSON only, one array, no trailing text."""
 
     try:
         from analysis.system_prompt import MASTER_SYSTEM_PROMPT
@@ -122,15 +157,20 @@ plays and expected TDs from pace + points. No hype. Keep it under 250 words."""
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     try:
         resp = client.messages.create(
-            model=MODEL, max_tokens=800, system=sysprompt,
+            model=MODEL, max_tokens=1000, system=sysprompt,
             messages=[{"role": "user", "content": prompt}])
         board = resp.content[0].text
     except Exception as e:
         board = f"TD projection failed: {e}"
+
+    # Split the graded TD picks out of the board
+    td_plays = _parse_td_plays(board)
+    board = re.sub(r'\n*TD_JSON:\s*\[.*\]\s*$', '', board, flags=re.S).strip()
 
     # Prepend the real data table so it's shown and saved with the board
     if td_rows and not board.startswith("TD projection failed"):
         board = ("**📊 Real TD data (ESPN game logs):**\n\n"
                  + data_md + "\n\n---\n\n" + board)
 
-    return {"matchup": matchup, "board": board, "td_data": td_rows}
+    return {"matchup": matchup, "board": board,
+            "td_plays": td_plays, "td_data": td_rows}

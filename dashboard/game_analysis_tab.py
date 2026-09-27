@@ -23,7 +23,8 @@ _SCORER_RE = re.compile(r'^\s*\d+\.\s*(.+?)\s*[—\-]\s*~?(\d+)\s*%', re.U)
 
 
 def _parse_td_scorers(board, matchup, rating):
-    """Pull the numbered '1. Player (POS) — ~XX% ...' lines out of a TD board."""
+    """Fallback for OLD saved boards with no graded picks: parse the numbered
+    '1. Player (POS) — ~XX% ...' lines out of the board text."""
     rows = []
     for line in str(board).splitlines():
         m = _SCORER_RE.match(line)
@@ -36,24 +37,72 @@ def _parse_td_scorers(board, matchup, rating):
         if pm:
             pos = pm.group(1)
             who = who[:pm.start()].strip()
-        rows.append({"player": who, "pos": pos, "pct": pct,
-                     "matchup": matchup, "rating": rating})
+        rows.append({"player": who, "pos": pos, "conf": pct, "verdict": "",
+                     "reason": "", "matchup": matchup, "rating": rating})
     return rows
+
+
+def _flatten_td(saved_rows):
+    """TD picks across saved boards. Uses graded picks (dicts) when present,
+    else falls back to parsing the old board text. Drops Pass."""
+    rows = []
+    for r in saved_rows:
+        items = r.get("edge_plays") or []
+        if items and isinstance(items[0], dict):
+            for it in items:
+                rows.append({
+                    "player": it.get("player", ""),
+                    "pos": it.get("pos", ""),
+                    "verdict": (it.get("verdict", "") or "").title(),
+                    "conf": int(it.get("confidence", 0) or 0),
+                    "reason": it.get("reason", ""),
+                    "matchup": r["matchup"], "rating": r["rating"],
+                })
+        else:
+            rows.extend(_parse_td_scorers(r["writeup"], r["matchup"], r["rating"]))
+    return [p for p in rows if str(p.get("verdict", "")).lower() != "pass"]
 
 
 def _flatten_plays(saved_rows):
-    """Flatten every saved analysis's edge plays into one player list."""
+    """Flatten every saved analysis's graded plays into one list.
+    Handles the new verdict format (dicts) and the old raw format (tuples)."""
     rows = []
     for r in saved_rows:
-        for tup in (r.get("edge_plays") or []):
-            try:
-                name, label, hr, tier = tup
-                rows.append({"player": name, "prop": label,
-                             "hit": float(hr), "tier": tier,
-                             "matchup": r["matchup"], "rating": r["rating"]})
-            except Exception:
-                continue
-    return rows
+        for item in (r.get("edge_plays") or []):
+            if isinstance(item, dict):
+                rows.append({
+                    "player": item.get("player", ""),
+                    "prop": item.get("prop", ""),
+                    "verdict": (item.get("verdict", "") or "").title(),
+                    "conf": int(item.get("confidence", 0) or 0),
+                    "reason": item.get("reason", ""),
+                    "matchup": r["matchup"], "rating": r["rating"],
+                })
+            else:
+                try:
+                    name, label, hr, tier = item
+                    rows.append({"player": name, "prop": label,
+                                 "verdict": f"Tier {tier}",
+                                 "conf": int(float(hr)), "reason": "",
+                                 "matchup": r["matchup"], "rating": r["rating"]})
+                except Exception:
+                    continue
+    # drop anything the analysis said to pass on
+    return [p for p in rows if p["verdict"].lower() != "pass"]
+
+
+def _plays_caption(plays):
+    """Show the analysis's graded plays (Play/Lean) under a fresh analysis."""
+    if not plays:
+        return
+    keep = [p for p in plays if str(p.get("verdict", "")).lower() != "pass"]
+    if not keep:
+        st.caption("Analysis graded all model plays a Pass for this game.")
+        return
+    keep.sort(key=lambda x: int(x.get("confidence", 0) or 0), reverse=True)
+    st.caption("Graded plays: " + " · ".join(
+        f'{p.get("verdict","")} {p["player"]} {p["prop"]} '
+        f'({int(p.get("confidence",0) or 0)}%)' for p in keep[:6]))
 
 
 def _edge_caption(edge_plays):
@@ -93,8 +142,6 @@ def _render_saved(rows, set_rating, delete_saved, td=False):
         rating = int(row.get("rating", 0) or 0)
         with st.expander(f"{_stars(rating)}  {row['matchup']}", expanded=False):
             st.markdown(row["writeup"])
-            if not td:
-                _edge_caption(row.get("edge_plays"))
             rc1, rc2, rc3 = st.columns([2, 1, 1])
             with rc1:
                 new_rating = st.slider("Rating", 0, 5, rating,
@@ -220,7 +267,7 @@ def render_game_analysis_tab():
             failed = str(data.get("writeup", "")).startswith("Analysis failed")
             with st.expander(f"🏈 {matchup}", expanded=(len(results) == 1)):
                 st.markdown(data["writeup"])
-                _edge_caption(data.get("edge_plays"))
+                _plays_caption(data.get("plays"))
                 tb = td_boards.get(matchup)
                 td_failed = tb and str(tb.get("board", "")).startswith("TD projection failed")
                 if tb:
@@ -234,7 +281,7 @@ def render_game_analysis_tab():
                                                     key=f"save_an_{matchup}"):
                             try:
                                 save_analysis(matchup, SPORT, data["writeup"],
-                                              data.get("edge_plays", []),
+                                              data.get("plays", []),
                                               kind="analysis")
                                 st.success("Analysis saved — rate it below.")
                             except Exception as e:
@@ -243,8 +290,8 @@ def render_game_analysis_tab():
                         if tb and not td_failed and st.button(
                                 "💾 Save TD board", key=f"save_td_{matchup}"):
                             try:
-                                save_analysis(matchup, SPORT, tb["board"], [],
-                                              kind="td")
+                                save_analysis(matchup, SPORT, tb["board"],
+                                              tb.get("td_plays", []), kind="td")
                                 st.success("TD board saved — rate it below.")
                             except Exception as e:
                                 st.error(f"Save failed: {e}")
@@ -261,7 +308,8 @@ def render_game_analysis_tab():
                 if store_ok and not td_failed:
                     if st.button("💾 Save TD board", key=f"save_td_solo_{m}"):
                         try:
-                            save_analysis(m, SPORT, b["board"], [], kind="td")
+                            save_analysis(m, SPORT, b["board"],
+                                          b.get("td_plays", []), kind="td")
                             st.success("TD board saved — rate it below.")
                         except Exception as e:
                             st.error(f"Save failed: {e}")
@@ -282,20 +330,22 @@ def render_game_analysis_tab():
     except Exception:
         pd = None
 
-    # ===== Top plays across saved analyses (player-level) =====
+    # ===== Top plays across saved analyses (analysis-graded) =====
     st.divider()
     st.markdown(f"### 🏆 Top plays — saved analyses ({len(saved_an)} games)")
+    st.caption("Ranked by the analysis's own confidence (form + matchup + "
+               "injuries), not raw hit rate. Players graded Pass are excluded.")
     plays = _flatten_plays(saved_an)
-    plays.sort(key=lambda x: x["hit"], reverse=True)
+    plays.sort(key=lambda x: x["conf"], reverse=True)
     if not plays:
-        st.info("Save an analysis above to rank its individual plays here.")
+        st.info("Save an analysis above to rank its graded plays here.")
     elif pd is not None:
         df = pd.DataFrame([{
             "Rank": i + 1,
             "Player": p["player"],
             "Prop": p["prop"],
-            "Model hit%": f'{p["hit"]:.0f}%',
-            "Tier": p["tier"],
+            "Verdict": p["verdict"],
+            "Confidence": f'{p["conf"]:.0f}%',
             "Matchup": p["matchup"],
             "Rating": _stars(p["rating"]),
         } for i, p in enumerate(plays)])
@@ -304,20 +354,21 @@ def render_game_analysis_tab():
         st.caption("Saved analyses — open to read, re-rate, or delete:")
         _render_saved(saved_an, set_rating, delete_saved, td=False)
 
-    # ===== Top TD scorers across saved boards (player-level) =====
+    # ===== Top TD scorers across saved boards (analysis-graded) =====
     st.divider()
     st.markdown(f"### 🏆 Top TD scorers — saved boards ({len(saved_td)} games)")
-    scorers = []
-    for r in saved_td:
-        scorers.extend(_parse_td_scorers(r["writeup"], r["matchup"], r["rating"]))
-    scorers.sort(key=lambda x: x["pct"], reverse=True)
+    st.caption("Ranked by the board's graded confidence (real TD data + matchup "
+               "+ injuries). Players graded Pass are excluded.")
+    scorers = _flatten_td(saved_td)
+    scorers.sort(key=lambda x: x["conf"], reverse=True)
     if not scorers:
         st.info("Save a TD board above to rank its scorers here.")
     elif pd is not None:
         df = pd.DataFrame([{
             "Rank": i + 1,
-            "Player": s["player"] + (f' ({s["pos"]})' if s["pos"] else ""),
-            "Anytime TD": f'{s["pct"]}%',
+            "Player": s["player"] + (f' ({s["pos"]})' if s.get("pos") else ""),
+            "Verdict": s.get("verdict", "") or "—",
+            "Anytime TD": f'{s["conf"]}%',
             "Matchup": s["matchup"],
             "Rating": _stars(s["rating"]),
         } for i, s in enumerate(scorers)])

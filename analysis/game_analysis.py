@@ -11,6 +11,8 @@ results cached by the caller so re-viewing doesn't re-spend.
 """
 
 import sys
+import json
+import re
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -19,6 +21,30 @@ from loguru import logger
 from config.settings import ANTHROPIC_API_KEY
 
 MODEL = "claude-sonnet-4-6"
+
+
+def _parse_plays(text):
+    """Pull the PLAYS_JSON block the model emits into structured graded plays."""
+    m = re.search(r'PLAYS_JSON:\s*(\[.*\])', text, re.S)
+    if not m:
+        return []
+    try:
+        arr = json.loads(m.group(1))
+    except Exception:
+        return []
+    out = []
+    for p in arr:
+        try:
+            out.append({
+                "player": str(p.get("player", "")).strip(),
+                "prop": str(p.get("prop", "")).strip(),
+                "verdict": str(p.get("verdict", "")).strip().title(),
+                "confidence": int(float(p.get("confidence", 0))),
+                "reason": str(p.get("reason", "")).strip(),
+            })
+        except Exception:
+            continue
+    return out
 
 
 def _web_context(query: str, extraction_prompt: str) -> str:
@@ -133,7 +159,17 @@ Write a tight game analysis (250-350 words):
 
 Ground everything in the data given. Do NOT invent stats. Flag thin data
 plainly. Our rush-yard props are the edge; receiving/passing props have
-been weaker — weight accordingly. No hype — an honest bettor's read."""
+been weaker — weight accordingly. No hype — an honest bettor's read.
+
+After the analysis, output on its own line exactly this and nothing after it:
+PLAYS_JSON: [{{"player":"Full Name","prop":"prop label","verdict":"Play|Lean|Pass","confidence":<0-100>,"reason":"<=12 words"}}]
+Rules for PLAYS_JSON:
+- Include EVERY model edge play listed above, each with your verdict.
+- The verdict and confidence must reflect the WHOLE analysis — recent form
+  (model hit rate), the team/scheme matchup, and injuries — not hit rate alone.
+- Any player who is OUT / inactive / not playing = "Pass", confidence 0.
+- confidence is your true anytime-hit confidence for that prop (0-100).
+- Valid JSON only, one array, no trailing text."""
 
     try:
         from analysis.system_prompt import MASTER_SYSTEM_PROMPT
@@ -143,12 +179,18 @@ been weaker — weight accordingly. No hype — an honest bettor's read."""
 
     try:
         resp = client.messages.create(
-            model=MODEL, max_tokens=900, system=sysprompt,
+            model=MODEL, max_tokens=1100, system=sysprompt,
             messages=[{"role": "user", "content": prompt}])
         writeup = resp.content[0].text
     except Exception as e:
         writeup = f"Analysis failed: {e}"
 
-    return {"matchup": matchup, "writeup": writeup,
+    # Split the graded plays out of the writeup
+    plays = _parse_plays(writeup)
+    writeup_clean = re.sub(r'\n*PLAYS_JSON:\s*\[.*\]\s*$', '', writeup,
+                           flags=re.S).strip()
+
+    return {"matchup": matchup, "writeup": writeup_clean,
+            "plays": plays,
             "edge_plays": [(p.player_name, p.prop_label, p.hit_rate, p.tier)
                            for p in top]}
