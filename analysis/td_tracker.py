@@ -24,17 +24,19 @@ from config.settings import ANTHROPIC_API_KEY
 MODEL = "claude-sonnet-4-6"
 
 
-def _parse_td_plays(text):
-    """Pull the TD_JSON block into structured, graded TD picks."""
-    m = re.search(r'TD_JSON:\s*(\[.*\])', text, re.S)
+def _json_array(text):
+    m = re.search(r'\[.*\]', text, re.S)
     if not m:
         return []
     try:
-        arr = json.loads(m.group(1))
+        return json.loads(m.group(0))
     except Exception:
         return []
+
+
+def _normalize_td(arr):
     out = []
-    for p in arr:
+    for p in arr or []:
         try:
             out.append({
                 "player": str(p.get("player", "")).strip(),
@@ -46,6 +48,24 @@ def _parse_td_plays(text):
         except Exception:
             continue
     return out
+
+
+def _extract_td_plays(client, board, data_md):
+    """Second, short call: turn the finished TD board into structured picks."""
+    ex = ("From the NFL touchdown board below, output ONLY a JSON array (no prose, "
+          "no code fence). Each item: {\"player\":\"\",\"pos\":\"\","
+          "\"verdict\":\"Play|Lean|Pass\",\"confidence\":0-100,\"reason\":\"<=12 words\"}. "
+          "Include every scorer listed for both teams. confidence = anytime-TD "
+          "probability. A player who is OUT / inactive = verdict \"Pass\", "
+          "confidence 0.\n\nREAL TD DATA:\n" + data_md + "\n\nBOARD:\n" + board)
+    try:
+        resp = client.messages.create(
+            model=MODEL, max_tokens=600,
+            messages=[{"role": "user", "content": ex}])
+        return _normalize_td(_json_array(resp.content[0].text))
+    except Exception as e:
+        logger.debug(f"[TDTracker] TD play extraction failed: {e}")
+        return []
 
 
 def _web(query, extraction):
@@ -137,16 +157,7 @@ Then:
 
 Anchor each % to the REAL TD DATA P(any) above; move off it only with a stated
 reason (matchup funnel, injury vacating goal-line work, role change). Estimate
-plays and expected TDs from pace + points. No hype. Keep the board under 250 words.
-
-After the board, output on its own line exactly this and nothing after it:
-TD_JSON: [{{"player":"Full Name","pos":"RB","verdict":"Play|Lean|Pass","confidence":<0-100>,"reason":"<=12 words"}}]
-Rules for TD_JSON:
-- Include every scorer you listed for both teams.
-- confidence = your anytime-TD probability, anchored to the REAL TD DATA P(any),
-  adjusted for matchup / injury / role.
-- Any player OUT / inactive / not playing = "Pass", confidence 0.
-- Valid JSON only, one array, no trailing text."""
+plays and expected TDs from pace + points. No hype. Keep the board under 250 words."""
 
     try:
         from analysis.system_prompt import MASTER_SYSTEM_PROMPT
@@ -163,9 +174,10 @@ Rules for TD_JSON:
     except Exception as e:
         board = f"TD projection failed: {e}"
 
-    # Split the graded TD picks out of the board
-    td_plays = _parse_td_plays(board)
-    board = re.sub(r'\n*TD_JSON:\s*\[.*\]\s*$', '', board, flags=re.S).strip()
+    # Second call: extract the graded TD picks (can't be truncated off the board)
+    td_plays = []
+    if not board.startswith("TD projection failed"):
+        td_plays = _extract_td_plays(client, board, data_md)
 
     # Prepend the real data table so it's shown and saved with the board
     if td_rows and not board.startswith("TD projection failed"):

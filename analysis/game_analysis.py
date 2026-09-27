@@ -23,17 +23,20 @@ from config.settings import ANTHROPIC_API_KEY
 MODEL = "claude-sonnet-4-6"
 
 
-def _parse_plays(text):
-    """Pull the PLAYS_JSON block the model emits into structured graded plays."""
-    m = re.search(r'PLAYS_JSON:\s*(\[.*\])', text, re.S)
+def _json_array(text):
+    """Grab the first JSON array in text (tolerant of code fences / prose)."""
+    m = re.search(r'\[.*\]', text, re.S)
     if not m:
         return []
     try:
-        arr = json.loads(m.group(1))
+        return json.loads(m.group(0))
     except Exception:
         return []
+
+
+def _normalize_plays(arr):
     out = []
-    for p in arr:
+    for p in arr or []:
         try:
             out.append({
                 "player": str(p.get("player", "")).strip(),
@@ -45,6 +48,26 @@ def _parse_plays(text):
         except Exception:
             continue
     return out
+
+
+def _extract_plays(client, writeup, plays_txt):
+    """Second, short call: turn the finished writeup into structured graded
+    plays. Isolated from the writeup so it can never be truncated off the end."""
+    ex = ("From the NFL analysis below, output ONLY a JSON array (no prose, no "
+          "code fence). Each item: {\"player\":\"\",\"prop\":\"\","
+          "\"verdict\":\"Play|Lean|Pass\",\"confidence\":0-100,\"reason\":\"<=12 words\"}. "
+          "Include EVERY model edge play listed. A player who is OUT / inactive / "
+          "not playing = verdict \"Pass\", confidence 0. Confidence must match the "
+          "analysis (form + matchup + injuries).\n\n"
+          f"MODEL EDGE PLAYS:\n{plays_txt}\n\nANALYSIS:\n{writeup}")
+    try:
+        resp = client.messages.create(
+            model=MODEL, max_tokens=700,
+            messages=[{"role": "user", "content": ex}])
+        return _normalize_plays(_json_array(resp.content[0].text))
+    except Exception as e:
+        logger.debug(f"[GameAnalysis] play extraction failed: {e}")
+        return []
 
 
 def _web_context(query: str, extraction_prompt: str) -> str:
@@ -159,17 +182,7 @@ Write a tight game analysis (250-350 words):
 
 Ground everything in the data given. Do NOT invent stats. Flag thin data
 plainly. Our rush-yard props are the edge; receiving/passing props have
-been weaker — weight accordingly. No hype — an honest bettor's read.
-
-After the analysis, output on its own line exactly this and nothing after it:
-PLAYS_JSON: [{{"player":"Full Name","prop":"prop label","verdict":"Play|Lean|Pass","confidence":<0-100>,"reason":"<=12 words"}}]
-Rules for PLAYS_JSON:
-- Include EVERY model edge play listed above, each with your verdict.
-- The verdict and confidence must reflect the WHOLE analysis — recent form
-  (model hit rate), the team/scheme matchup, and injuries — not hit rate alone.
-- Any player who is OUT / inactive / not playing = "Pass", confidence 0.
-- confidence is your true anytime-hit confidence for that prop (0-100).
-- Valid JSON only, one array, no trailing text."""
+been weaker — weight accordingly. No hype — an honest bettor's read."""
 
     try:
         from analysis.system_prompt import MASTER_SYSTEM_PROMPT
@@ -179,18 +192,18 @@ Rules for PLAYS_JSON:
 
     try:
         resp = client.messages.create(
-            model=MODEL, max_tokens=1100, system=sysprompt,
+            model=MODEL, max_tokens=1400, system=sysprompt,
             messages=[{"role": "user", "content": prompt}])
         writeup = resp.content[0].text
     except Exception as e:
         writeup = f"Analysis failed: {e}"
 
-    # Split the graded plays out of the writeup
-    plays = _parse_plays(writeup)
-    writeup_clean = re.sub(r'\n*PLAYS_JSON:\s*\[.*\]\s*$', '', writeup,
-                           flags=re.S).strip()
+    # Second call: extract the graded plays (can't be truncated off the writeup)
+    plays = []
+    if not writeup.startswith("Analysis failed"):
+        plays = _extract_plays(client, writeup, plays_txt)
 
-    return {"matchup": matchup, "writeup": writeup_clean,
+    return {"matchup": matchup, "writeup": writeup,
             "plays": plays,
             "edge_plays": [(p.player_name, p.prop_label, p.hit_rate, p.tier)
                            for p in top]}
