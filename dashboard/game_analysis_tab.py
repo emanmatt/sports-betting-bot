@@ -197,7 +197,7 @@ def render_game_analysis_tab():
     with c3:
         run_all = st.button("🧠 Analyze All")
     with c4:
-        if st.button("🗑️ Clear results"):
+        if st.button("🗑️ Clear session"):
             st.session_state.pop("game_analyses", None)
             st.session_state.pop("td_boards", None)
             st.rerun()
@@ -329,6 +329,65 @@ def render_game_analysis_tab():
         import pandas as pd
     except Exception:
         pd = None
+
+    # ---- Saved-data tools ----
+    st.divider()
+    tcol1, tcol2 = st.columns([1, 1])
+    with tcol1:
+        regrade = st.button("♻️ Re-grade all saved with latest analysis")
+    with tcol2:
+        clear_all = st.button("🗑️ Clear ALL saved")
+
+    if clear_all:
+        for r in saved_an + saved_td:
+            try:
+                delete_saved(r["id"])
+            except Exception:
+                pass
+        st.success("Cleared all saved analyses and TD boards.")
+        st.rerun()
+
+    if regrade:
+        from analysis.game_analysis import analyze_nfl_game
+        from analysis.td_tracker import project_touchdowns
+        total = len(saved_an) + len(saved_td)
+        done, skipped = 0, 0
+        prog = st.progress(0)
+        for r in saved_an:
+            g = game_by_matchup.get(r["matchup"])
+            if g:
+                try:
+                    data = analyze_nfl_game(g, ranker)
+                    save_analysis(r["matchup"], SPORT, data["writeup"],
+                                  data.get("plays", []), kind="analysis")
+                except Exception:
+                    pass
+            else:
+                skipped += 1
+            done += 1
+            if total:
+                prog.progress(done / total)
+        for r in saved_td:
+            g = game_by_matchup.get(r["matchup"])
+            if g:
+                try:
+                    tb = project_touchdowns(g, None, ranker=ranker)
+                    save_analysis(r["matchup"], SPORT, tb["board"],
+                                  tb.get("td_plays", []), kind="td")
+                except Exception:
+                    pass
+            else:
+                skipped += 1
+            done += 1
+            if total:
+                prog.progress(done / total)
+        prog.empty()
+        msg = "Re-graded all saved games with the latest analysis."
+        if skipped:
+            msg += (f" ({skipped} skipped — not on this week's slate, so no live "
+                    "game to re-analyze.)")
+        st.success(msg)
+        st.rerun()
 
     # ===== Top plays across saved analyses (analysis-graded) =====
     st.divider()
