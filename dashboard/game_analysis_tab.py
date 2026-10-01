@@ -278,6 +278,8 @@ def render_game_analysis_tab():
         for matchup, data in results.items():
             failed = str(data.get("writeup", "")).startswith("Analysis failed")
             with st.expander(f"🏈 {matchup}", expanded=(len(results) == 1)):
+                if data.get("book_status"):
+                    st.caption(f"🔎 book lines: {data['book_status']}")
                 st.markdown(data["writeup"])
                 _plays_caption(data.get("plays"))
                 tb = td_boards.get(matchup)

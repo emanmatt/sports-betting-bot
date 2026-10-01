@@ -144,12 +144,20 @@ def analyze_nfl_game(game, ranker) -> dict:
 
     # 2a. Real FanDuel + PrizePicks lines for this game (cached; ~6 credits once)
     by_book = {}
+    book_status = "not attempted"
+    BL = None
     try:
         from data_ingestion.official import book_lines as BL
         eid = BL.find_event_id(game.away_team, game.home_team)
-        if eid:
+        if not eid:
+            book_status = "no OddsAPI event match for this game"
+        else:
             by_book = BL.fetch_focus_lines(eid)
+            cr = getattr(BL.get_client(), "last_credits", None)
+            book_status = (f"event {str(eid)[:8]} · {len(by_book)} players · "
+                           f"credits {cr}")
     except Exception as e:
+        book_status = f"ERROR {type(e).__name__}: {str(e)[:160]}"
         logger.debug(f"[GameAnalysis] book lines unavailable: {e}")
 
     # 2b. Format the edge data for the prompt, annotated with the real book line
@@ -307,5 +315,6 @@ Flag thin data plainly. No hype — an honest bettor's read."""
 
     return {"matchup": matchup, "writeup": writeup,
             "plays": plays,
+            "book_status": book_status,
             "edge_plays": [(p.player_name, p.prop_label, p.hit_rate, p.tier)
                            for p in top]}
