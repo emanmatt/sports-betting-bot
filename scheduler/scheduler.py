@@ -222,6 +222,19 @@ def job_full_daily_refresh():
     client.run_all_sports()
 
 
+def job_refresh_dvp():
+    """Rebuild Defense-vs-Position ranks (ESPN only, free). Runs weekly."""
+    logger.info("[Scheduler] \U0001F6E1\uFE0F Refreshing Defense-vs-Position...")
+    try:
+        from analysis.nfl_ranker import NFLRanker
+        from analysis.dvp_engine import refresh_dvp
+        blob = refresh_dvp(NFLRanker().nfl)
+        logger.info(f"[Scheduler] DvP refreshed: {blob.get('n_teams')} defenses.")
+    except Exception as e:
+        logger.error(f"[Scheduler] DvP refresh failed: {e}")
+
+
+
 def run_initial_load():
     """Run everything once on startup."""
     logger.info("=" * 60)
@@ -324,6 +337,10 @@ def main():
     scheduler.add_job(
         job_full_daily_refresh, CronTrigger(hour=7, minute=0),
         id="daily_refresh", name="Daily Refresh", max_instances=1
+    )
+    scheduler.add_job(
+        job_refresh_dvp, CronTrigger(day_of_week="tue", hour=8, minute=0),
+        id="dvp", name="Defense vs Position", max_instances=1
     )
 
     logger.info("✅ All jobs scheduled:")
