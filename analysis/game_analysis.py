@@ -130,13 +130,33 @@ def analyze_nfl_game(game, ranker) -> dict:
     edge_plays.sort(key=lambda x: x.score, reverse=True)
     top = edge_plays[:8]
 
-    # 2. Format the edge data for the prompt
+    # 2a. Real FanDuel + PrizePicks lines for this game (cached; ~6 credits once)
+    by_book = {}
+    try:
+        from data_ingestion.official import book_lines as BL
+        eid = BL.find_event_id(game.away_team, game.home_team)
+        if eid:
+            by_book = BL.fetch_focus_lines(eid)
+    except Exception as e:
+        logger.debug(f"[GameAnalysis] book lines unavailable: {e}")
+
+    # 2b. Format the edge data for the prompt, annotated with the real book line
     plays_txt = ""
     for p in top:
         inj = f" [{p.injury_flag}]" if getattr(p, "injury_flag", "") else ""
+        real = ""
+        if by_book:
+            try:
+                mk = BL.market_from_prop(p.prop_label)
+                if mk:
+                    ls = BL.line_str_for(by_book, p.player_name, mk)
+                    if ls:
+                        real = f"  [BOOK: {ls}]"
+            except Exception:
+                pass
         plays_txt += (f"- {p.player_name} ({p.position}, {p.team}){inj}: "
                       f"{p.prop_label} — model hit {p.hit_rate:.0f}% over "
-                      f"{p.games} games, avg {p.avg_value}, tier {p.tier}\n")
+                      f"{p.games} games, avg {p.avg_value}, tier {p.tier}{real}\n")
     if not plays_txt:
         plays_txt = "(no strong model plays surfaced for this game)"
 
@@ -165,7 +185,10 @@ MATCHUP & INJURY CONTEXT (injuries + team offensive/defensive identity + funnel)
 MODEL EDGE PLAYS (our data — rush-yard props are our proven edge; hit
 rates are from recent games, prior-year early season. Judge whether each
 player is trending UP or COOLING OFF from the hit rate + game count, and
-whether the matchup context above supports the volume):
+whether the matchup context above supports the volume. [BOOK: …] shows the
+REAL FanDuel/PrizePicks line — grade each play AGAINST that actual line, not
+a round number; if our model number clears the book line comfortably that's
+the edge, if it's close it's a pass):
 {plays_txt}
 
 Write a tight game analysis (250-350 words):

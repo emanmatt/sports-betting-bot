@@ -115,6 +115,32 @@ def project_touchdowns(game, edge_plays=None, ranker=None) -> dict:
     else:
         data_md = "(no TD data — estimating from web context)"
 
+    # Value flag: compare our data P(any) to FanDuel's anytime-TD implied prob
+    value_md = ""
+    try:
+        from data_ingestion.official import book_lines as BL
+        eid = BL.find_event_id(game.away_team, game.home_team)
+        by_book = BL.fetch_focus_lines(eid) if eid else {}
+        if by_book and td_rows:
+            rows = ["| Player | Data P(any) | FD odds | FD implied | Edge |",
+                    "|---|---|---|---|---|"]
+            any_val = False
+            for r in sorted(td_rows, key=lambda x: x["p_anytime"], reverse=True)[:12]:
+                fd_odds, implied, _ = BL.anytime_td_market(by_book, r["player"])
+                if implied is None:
+                    continue
+                edge = r["p_anytime"] - implied
+                flag = " ✅" if edge >= 0.05 else ""
+                odds_s = f"{int(round(float(fd_odds))):+d}" if fd_odds is not None else "—"
+                rows.append(f"| {r['player']} | {r['p_anytime']*100:.0f}% | "
+                            f"{odds_s} | {implied*100:.0f}% | {edge*100:+.0f}%{flag} |")
+                any_val = True
+            if any_val:
+                value_md = ("\n\n**💰 Value vs FanDuel (Data P(any) − book implied; "
+                            "✅ = +5pts edge):**\n\n" + "\n".join(rows))
+    except Exception as e:
+        logger.debug(f"[TDTracker] value flag unavailable: {e}")
+
     web = _web(
         f"{matchup} NFL 2026 red zone touches goal line back red zone targets "
         f"anytime touchdown scorers plays per game pace points per game",
@@ -129,6 +155,11 @@ overstate certainty.
 
 GAME: {matchup}
 Kickoff: {game.game_time}
+
+VALUE VS BOOK (our data P(any) minus FanDuel's implied prob; ✅ = +5pts edge —
+these are the real bets to target; a high TD% that the book already prices in
+is NOT value):
+{value_md if value_md else "(no book odds available)"}
 
 REAL TD DATA (from ESPN game logs — TD/gm is actual TDs per game, P(any) is
 the data-based anytime-TD probability from their real scoring rate. START from
@@ -181,10 +212,10 @@ plays and expected TDs from pace + points. No hype. Keep the board under 250 wor
     if not board.startswith("TD projection failed"):
         td_plays = _extract_td_plays(client, board, data_md)
 
-    # Prepend the real data table so it's shown and saved with the board
+    # Prepend the real data table (+ value-vs-book table) so they're shown/saved
     if td_rows and not board.startswith("TD projection failed"):
         board = ("**📊 Real TD data (ESPN game logs):**\n\n"
-                 + data_md + "\n\n---\n\n" + board)
+                 + data_md + value_md + "\n\n---\n\n" + board)
 
     return {"matchup": matchup, "board": board,
             "td_plays": td_plays, "td_data": td_rows}
