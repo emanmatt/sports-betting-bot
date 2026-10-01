@@ -3,13 +3,12 @@ data_ingestion/official/book_lines.py
 
 Focused FanDuel + PrizePicks line fetching for the Game Analysis / TD tracker.
 Reuses the existing NFLPropsLines client (its _get + credit tracking + event
-cache), but keeps PER-BOOK lines (the base parser merges books) and limits to
-the markets that matter, to keep credit use low.
+cache), but keeps PER-BOOK, PER-LINE ladders (standard + alternates) so we can
+grade the whole ladder (49.5 / 64.5 / 79.5 …), not one safe line.
 
-Cost model (The Odds API): credits = (unique markets returned) × (regions).
-FanDuel is region `us`, PrizePicks is region `us_dfs`, so both books = 2 regions.
-With 3 markets that's ~6 credits per game — and we cache per event id, so the
-analysis and the TD board share one fetch.
+Cost: credits = (unique markets returned) × (regions). FanDuel=us, PrizePicks=
+us_dfs → 2 regions. With rush/receptions standard+alt + anytime_td that's
+~5 markets × 2 = ~10 credits/game, cached per event id (analysis + TD share it).
 """
 
 import re
@@ -17,7 +16,12 @@ from loguru import logger
 
 from data_ingestion.official.nfl_props_lines import NFLPropsLines, NFL_KEY
 
-FOCUS_MARKETS = ["player_rush_yds", "player_receptions", "player_anytime_td"]
+# standard + alternate yardage/reception ladders + anytime TD
+FOCUS_MARKETS = [
+    "player_rush_yds", "player_rush_yds_alternate",
+    "player_receptions", "player_receptions_alternate",
+    "player_anytime_td",
+]
 FOCUS_BOOKS = ["fanduel", "prizepicks"]
 
 _US_BOOKS = {"fanduel", "draftkings", "betmgm", "caesars", "pointsbetus"}
@@ -56,7 +60,7 @@ def find_event_id(away_team, home_team):
 
 
 def _parse_by_book(data):
-    """player -> market -> {book: {line, over, under}} (keeps books separate)."""
+    """player -> market -> book -> {point: {line, over, under}} (full ladder)."""
     out = {}
     for book in data.get("bookmakers", []):
         bk = book.get("key", "")
@@ -72,19 +76,18 @@ def _parse_by_book(data):
                 if not player or point is None:
                     continue
                 side = "over" if nm in ("over", "yes") else "under"
-                d = out.setdefault(player, {}).setdefault(mkey, {}).setdefault(
-                    bk, {"line": point})
-                d[side] = price
-                d["line"] = point
+                ld = (out.setdefault(player, {}).setdefault(mkey, {})
+                      .setdefault(bk, {}).setdefault(point, {"line": point}))
+                ld[side] = price
     return out
 
 
 def fetch_focus_lines(event_id, markets=None, books=None):
-    """FanDuel + PrizePicks lines for the focus markets. Cached per event id."""
+    """FanDuel + PrizePicks ladders for the focus markets. Cached per event id."""
     markets = markets or FOCUS_MARKETS
     books = books or FOCUS_BOOKS
     c = get_client()
-    ck = f"bybook_{event_id}"
+    ck = f"ladder_{event_id}"
     if ck in c._event_cache:
         return c._event_cache[ck]
     regions = []
@@ -108,14 +111,12 @@ def fetch_focus_lines(event_id, markets=None, books=None):
 
 
 def _find_player(by_book, player_name):
-    """Match our player name to an OddsAPI player key (normalized)."""
     target = _norm(player_name)
     if not target:
         return None
     for p in by_book:
         if _norm(p) == target:
             return p
-    # last-name + first-initial fallback
     tparts = target.split()
     for p in by_book:
         np = _norm(p).split()
@@ -129,7 +130,6 @@ MARKET_FROM_LABEL = [
     ("reception", "player_receptions"),
     ("rec yard", "player_reception_yds"),
     ("receiving yard", "player_reception_yds"),
-    ("pass yard", "player_pass_yds"),
     ("anytime", "player_anytime_td"),
     ("touchdown", "player_anytime_td"),
 ]
@@ -153,36 +153,58 @@ def american_to_prob(odds):
     return 100.0 / (odds + 100.0) if odds > 0 else (-odds) / (-odds + 100.0)
 
 
-def line_str_for(by_book, player_name, market):
-    """'FD o42.5 (-112) · PP 44.5' for a player+market, or '' if no line."""
+def line_ladder(by_book, player_name, market, book="fanduel"):
+    """Sorted list of {line, over, under} for a player+market at one book."""
     pk = _find_player(by_book, player_name)
     if not pk:
-        return ""
-    md = by_book.get(pk, {}).get(market)
-    if not md:
-        return ""
+        return []
+    bd = by_book.get(pk, {}).get(market, {}).get(book, {})
+    out = [{"line": ld["line"], "over": ld.get("over"), "under": ld.get("under")}
+           for ld in bd.values()]
+    out.sort(key=lambda x: x["line"])
+    return out
+
+
+def _main_entry(ladder):
+    """The 'main' line = over odds closest to -110 (the central, non-alt line)."""
+    best, bestd = None, 1e9
+    for e in ladder:
+        ov = e.get("over")
+        if ov is None:
+            continue
+        d = abs(float(ov) + 110)
+        if d < bestd:
+            best, bestd = e, d
+    return best or (ladder[len(ladder) // 2] if ladder else None)
+
+
+def line_str_for(by_book, player_name, market):
+    """'FD 64.5 (o -115) · PP 68.5' — the MAIN line per book, for display."""
     parts = []
     for bk, label in (("fanduel", "FD"), ("prizepicks", "PP")):
-        if bk in md:
-            ln = md[bk].get("line")
-            ov = md[bk].get("over")
-            if market == "player_anytime_td":
-                p = american_to_prob(ov)
-                parts.append(f"{label} TD {ov:+d} ({p*100:.0f}%)" if ov is not None
-                             else f"{label} TD")
-            else:
-                parts.append(f"{label} {ln:g}" + (f" (o {ov:+d})" if ov is not None else ""))
+        lad = line_ladder(by_book, player_name, market, bk)
+        if not lad:
+            continue
+        if market == "player_anytime_td":
+            e = lad[0]
+            ov = e.get("over")
+            p = american_to_prob(ov)
+            parts.append(f"{label} TD {int(ov):+d} ({p*100:.0f}%)"
+                         if ov is not None else f"{label} TD")
+        else:
+            e = _main_entry(lad)
+            if e:
+                ov = e.get("over")
+                parts.append(f"{label} {e['line']:g}" +
+                             (f" (o {int(ov):+d})" if ov is not None else ""))
     return " · ".join(parts)
 
 
 def anytime_td_market(by_book, player_name):
     """Return (fd_odds, fd_implied_prob, pp_present) for a player's anytime TD."""
-    pk = _find_player(by_book, player_name)
-    if not pk:
-        return None, None, False
-    md = by_book.get(pk, {}).get("player_anytime_td")
-    if not md:
-        return None, None, False
-    fd = md.get("fanduel", {})
-    fd_odds = fd.get("over")
-    return fd_odds, american_to_prob(fd_odds), ("prizepicks" in md)
+    lad = line_ladder(by_book, player_name, "player_anytime_td", "fanduel")
+    pp = bool(line_ladder(by_book, player_name, "player_anytime_td", "prizepicks"))
+    if not lad:
+        return None, None, pp
+    fd_odds = lad[0].get("over")
+    return fd_odds, american_to_prob(fd_odds), pp

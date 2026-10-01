@@ -75,6 +75,7 @@ def _flatten_plays(saved_rows):
                     "prop": item.get("prop", ""),
                     "verdict": (item.get("verdict", "") or "").title(),
                     "conf": int(item.get("confidence", 0) or 0),
+                    "edge": item.get("edge", None),
                     "reason": item.get("reason", ""),
                     "matchup": r["matchup"], "rating": r["rating"],
                 })
@@ -83,7 +84,7 @@ def _flatten_plays(saved_rows):
                     name, label, hr, tier = item
                     rows.append({"player": name, "prop": label,
                                  "verdict": f"Tier {tier}",
-                                 "conf": int(float(hr)), "reason": "",
+                                 "conf": int(float(hr)), "edge": None, "reason": "",
                                  "matchup": r["matchup"], "rating": r["rating"]})
                 except Exception:
                     continue
@@ -100,9 +101,12 @@ def _plays_caption(plays):
         st.caption("Analysis graded all model plays a Pass for this game.")
         return
     keep.sort(key=lambda x: int(x.get("confidence", 0) or 0), reverse=True)
-    st.caption("Graded plays: " + " · ".join(
-        f'{p.get("verdict","")} {p["player"]} {p["prop"]} '
-        f'({int(p.get("confidence",0) or 0)}%)' for p in keep[:6]))
+    def _one(p):
+        e = p.get("edge")
+        es = f", edge +{int(e)}" if isinstance(e, (int, float)) and e else ""
+        return (f'{p.get("verdict","")} {p["player"]} {p["prop"]} '
+                f'({int(p.get("confidence",0) or 0)}%{es})')
+    st.caption("Graded plays: " + " · ".join(_one(p) for p in keep[:6]))
 
 
 def _edge_caption(edge_plays):
@@ -408,19 +412,27 @@ def render_game_analysis_tab():
     # ===== Top plays across saved analyses (analysis-graded) =====
     st.divider()
     st.markdown(f"### 🏆 Top plays — saved analyses ({len(saved_an)} games)")
-    st.caption("Ranked by the analysis's own confidence (form + matchup + "
-               "injuries), not raw hit rate. Players graded Pass are excluded.")
+    st.caption("The recommended line, hit probability, and edge vs the book — "
+               "ranked by edge (best value first). Players graded Pass are excluded.")
+
+    def _edge_val(p):
+        e = p.get("edge")
+        return e if isinstance(e, (int, float)) else -999
+
     plays = _flatten_plays(saved_an)
-    plays.sort(key=lambda x: x["conf"], reverse=True)
+    # sort by edge first (best value), then confidence
+    plays.sort(key=lambda x: (_edge_val(x), x["conf"]), reverse=True)
     if not plays:
         st.info("Save an analysis above to rank its graded plays here.")
     elif pd is not None:
         df = pd.DataFrame([{
             "Rank": i + 1,
             "Player": p["player"],
-            "Prop": p["prop"],
+            "Prop (rec. line)": p["prop"],
             "Verdict": p["verdict"],
-            "Confidence": f'{p["conf"]:.0f}%',
+            "Hit %": f'{p["conf"]:.0f}%',
+            "Edge": (f'+{int(p["edge"])}' if isinstance(p.get("edge"), (int, float))
+                     and p["edge"] else "—"),
             "Matchup": p["matchup"],
             "Rating": _stars(p["rating"]),
         } for i, p in enumerate(plays)])
