@@ -170,6 +170,20 @@ def analyze_nfl_game(game, ranker) -> dict:
         f"and defense rank vs the run and vs the pass, and where the funnel points "
         f"(e.g. weak run D vs a run-first offense = volume to the backs).")
 
+    # 3b. Defense-vs-Position hard ranks (cached; built by build_dvp.py)
+    dvp_block = ""
+    try:
+        from analysis.dvp_engine import load_dvp, dvp_summary
+        _blob = load_dvp()
+        if _blob:
+            home_d = dvp_summary(_blob, game.home_team)  # faced by away offense
+            away_d = dvp_summary(_blob, game.away_team)  # faced by home offense
+            lines = [x for x in (away_d, home_d) if x]
+            if lines:
+                dvp_block = "\n".join(lines)
+    except Exception as e:
+        logger.debug(f"[GameAnalysis] DvP unavailable: {e}")
+
     # 4. Claude writeup
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     prompt = f"""Analyze this NFL game for a sharp bettor. Use the framework:
@@ -178,6 +192,11 @@ with real reasoning, a counter-case, and an honest confidence level.
 
 GAME: {matchup}
 Kickoff: {game.game_time}
+
+DEFENSE VS POSITION (HARD matchup data — yards/receptions each defense allows
+per game to RB/WR/TE; rank N/32 where 1 = softest/most allowed. This is the
+funnel: a back facing a defense ranked top-5 softest vs RB rush is a real spot):
+{dvp_block if dvp_block else "(DvP cache not built yet — run build_dvp.py)"}
 
 MATCHUP & INJURY CONTEXT (injuries + team offensive/defensive identity + funnel):
 {context}
