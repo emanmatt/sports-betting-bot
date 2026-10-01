@@ -22,6 +22,8 @@ from loguru import logger
 from config.settings import ANTHROPIC_API_KEY
 
 MODEL = "claude-sonnet-4-6"
+# Cheap model for mechanical sub-tasks (extraction) — ~5x cheaper than Sonnet.
+CHEAP_MODEL = "claude-haiku-4-5-20251001"
 
 
 def _json_array(text):
@@ -60,7 +62,7 @@ def _extract_td_plays(client, board, data_md):
           "confidence 0.\n\nREAL TD DATA:\n" + data_md + "\n\nBOARD:\n" + board)
     try:
         resp = client.messages.create(
-            model=MODEL, max_tokens=600,
+            model=CHEAP_MODEL, max_tokens=600,
             messages=[{"role": "user", "content": ex}])
         return _normalize_td(_json_array(resp.content[0].text))
     except Exception as e:

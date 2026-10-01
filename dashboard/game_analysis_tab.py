@@ -234,7 +234,15 @@ def render_game_analysis_tab():
         st.session_state["td_boards"] = td_boards
         st.rerun()
 
+    if run_all and not st.session_state.get("confirm_all"):
+        st.session_state["confirm_all"] = True
+        st.warning(f"⚠️ Analyze All fires ~{len(game_by_matchup)} games × several "
+                   "Claude calls each (a few $ of credits). Click **Analyze All** "
+                   "again to confirm.")
+        run_all = False
+
     if run_all:
+        st.session_state["confirm_all"] = False
         from analysis.game_analysis import analyze_nfl_game
         prog = st.progress(0)
         items = list(game_by_matchup.items())
@@ -347,7 +355,15 @@ def render_game_analysis_tab():
         st.success("Cleared all saved analyses and TD boards.")
         st.rerun()
 
+    if regrade and not st.session_state.get("confirm_regrade"):
+        st.session_state["confirm_regrade"] = True
+        st.warning(f"⚠️ Re-grade fires Claude calls for {len(saved_an)} analyses + "
+                   f"{len(saved_td)} TD boards (a few $ of credits). Click "
+                   "**Re-grade all** again to confirm.")
+        regrade = False
+
     if regrade:
+        st.session_state["confirm_regrade"] = False
         from analysis.game_analysis import analyze_nfl_game
         from analysis.td_tracker import project_touchdowns
         total = len(saved_an) + len(saved_td)

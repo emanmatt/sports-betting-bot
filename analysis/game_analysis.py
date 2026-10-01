@@ -21,6 +21,8 @@ from loguru import logger
 from config.settings import ANTHROPIC_API_KEY
 
 MODEL = "claude-sonnet-4-6"
+# Cheap model for mechanical sub-tasks (extraction) — ~5x cheaper than Sonnet.
+CHEAP_MODEL = "claude-haiku-4-5-20251001"
 
 
 def _json_array(text):
@@ -62,7 +64,7 @@ def _extract_plays(client, writeup, plays_txt):
           f"MODEL EDGE PLAYS:\n{plays_txt}\n\nANALYSIS:\n{writeup}")
     try:
         resp = client.messages.create(
-            model=MODEL, max_tokens=700,
+            model=CHEAP_MODEL, max_tokens=700,
             messages=[{"role": "user", "content": ex}])
         return _normalize_plays(_json_array(resp.content[0].text))
     except Exception as e:
@@ -138,17 +140,17 @@ def analyze_nfl_game(game, ranker) -> dict:
     if not plays_txt:
         plays_txt = "(no strong model plays surfaced for this game)"
 
-    # 3. Team & scheme matchup profile (offense/defense identity + funnel)
-    team_ctx = _team_matchup_context(matchup, game.home_team, game.away_team)
+    # 3. ONE combined web search: injuries + team/scheme identity (cost saver)
+    context = _web_context(
+        f"{matchup} NFL 2026 injuries inactives team offense defense rankings preview",
+        f"For {matchup}, concise and factual, two parts:\n"
+        f"(A) INJURIES: confirmed injuries/inactives and role changes that affect "
+        f"rushing or receiving volume (who's OUT, backfield/target roles, weather).\n"
+        f"(B) TEAM IDENTITY: each team's offense (run vs pass, pace, points/game) "
+        f"and defense rank vs the run and vs the pass, and where the funnel points "
+        f"(e.g. weak run D vs a run-first offense = volume to the backs).")
 
-    # 4. Live web context (injuries, roles, matchup)
-    web = _web_context(
-        f"{matchup} NFL injuries inactives news preview 2026 week",
-        f"For the game {matchup}: extract confirmed injuries/inactives, "
-        f"backfield/target roles, key matchups, weather if outdoor, and any "
-        f"news that affects rushing or receiving volume. Concise, factual.")
-
-    # 5. Claude writeup
+    # 4. Claude writeup
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     prompt = f"""Analyze this NFL game for a sharp bettor. Use the framework:
 tier the data (hard vs contextual vs soft), give the strongest 1-3 plays
@@ -157,17 +159,14 @@ with real reasoning, a counter-case, and an honest confidence level.
 GAME: {matchup}
 Kickoff: {game.game_time}
 
-TEAM & MATCHUP PROFILE (offensive/defensive identity, scheme funnel):
-{team_ctx}
+MATCHUP & INJURY CONTEXT (injuries + team offensive/defensive identity + funnel):
+{context}
 
 MODEL EDGE PLAYS (our data — rush-yard props are our proven edge; hit
 rates are from recent games, prior-year early season. Judge whether each
 player is trending UP or COOLING OFF from the hit rate + game count, and
-whether the matchup profile above supports the volume):
+whether the matchup context above supports the volume):
 {plays_txt}
-
-LIVE WEB CONTEXT (injuries, roles, matchup news):
-{web}
 
 Write a tight game analysis (250-350 words):
 1. THE LEAN — best 1-3 plays and WHY (role, volume, scheme matchup,
